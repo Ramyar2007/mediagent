@@ -1,0 +1,10 @@
+# MediAgent Core Dependencies
+# Compatible with Python 3.12+
+# Optimized for AMD MI300X local inference stack
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+openai==1.58.1
+python-multipart==0.0.20
+pydantic==2.10.5
+Pillow==11.1.0

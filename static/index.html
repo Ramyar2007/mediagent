@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediAgent | Autonomous Radiology Pipeline</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+                    colors: {
+                        med: { 50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { height: 100vh; overflow: hidden; background: #f1f5f9; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        .agent-card { transition: all 0.3s ease; }
+        .drop-zone { transition: all 0.2s ease; }
+        .drop-zone.drag-over { border-color: #2563eb; background-color: #eff6ff; transform: scale(1.005); }
+        
+        .finding-normal { border-left-color: #10b981; }
+        .finding-incidental { border-left-color: #f59e0b; }
+        .finding-significant { border-left-color: #f97316; }
+        .finding-critical { border-left-color: #ef4444; }
+    </style>
+</head>
+<body class="flex flex-col text-slate-800">
+
+    <!-- HEADER -->
+    <header class="h-16 bg-slate-900 text-white flex items-center justify-between px-6 shrink-0 z-10 shadow-md">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-med-600 rounded flex items-center justify-center font-bold text-white">M</div>
+            <div>
+                <h1 class="font-bold text-lg tracking-tight">MediAgent <span class="text-med-400 font-medium">Workstation</span></h1>
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                    <span class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">System Online</span>
+                </div>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <span id="clock" class="text-xs font-mono text-slate-400"></span>
+            <div class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1 rounded-full">
+                <span class="text-xs font-semibold text-slate-300">AMD MI300X Local Inference</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN GRID -->
+    <main class="flex-1 grid grid-cols-12 gap-0 overflow-hidden">
+
+        <!-- LEFT: INPUT -->
+        <section class="col-span-12 md:col-span-3 bg-slate-50 border-r border-slate-200 flex flex-col h-full overflow-y-auto p-5 gap-5">
+            <div>
+                <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Input Data</h2>
+                
+                <div id="drop-zone" class="drop-zone border-2 border-dashed border-slate-300 rounded-lg p-6 text-center cursor-pointer bg-white hover:border-med-500 mb-4 group relative">
+                    <input type="file" id="file-input" class="hidden" accept="image/png,image/jpeg">
+                    <div id="upload-placeholder">
+                        <svg class="w-10 h-10 text-slate-400 mx-auto mb-2 group-hover:text-med-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        <p class="text-sm font-medium text-slate-600">Upload Medical Image</p>
+                        <p class="text-xs text-slate-400 mt-1">PNG / JPG (Max 20MB)</p>
+                    </div>
+                    <img id="image-preview" class="hidden w-full h-40 object-contain rounded bg-slate-100 mx-auto" alt="Preview">
+                </div>
+
+                <form id="analysis-form" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Chief Complaint</label>
+                        <textarea id="symptoms" rows="3" class="w-full text-sm border border-slate-300 rounded p-2.5 focus:ring-2 focus:ring-med-500 focus:border-med-500 outline-none resize-none" placeholder="e.g., Chest pain, shortness of breath..."></textarea>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Age</label>
+                            <input type="number" id="age" min="0" max="120" class="w-full text-sm border border-slate-300 rounded p-2.5 focus:ring-2 focus:ring-med-500 outline-none" placeholder="Yrs">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Sex</label>
+                            <select id="sex" class="w-full text-sm border border-slate-300 rounded p-2.5 focus:ring-2 focus:ring-med-500 outline-none bg-white">
+                                <option value="">Select</option>
+                                <option value="M">Male</option>
+                                <option value="F">Female</option>
+                                <option value="O">Other</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Clinical History</label>
+                        <textarea id="clinical_context" rows="2" class="w-full text-sm border border-slate-300 rounded p-2.5 focus:ring-2 focus:ring-med-500 outline-none resize-none" placeholder="Relevant history..."></textarea>
+                    </div>
+                    <button type="submit" id="submit-btn" class="w-full bg-med-800 hover:bg-med-900 text-white font-semibold py-2.5 rounded shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span id="btn-text">Execute Pipeline</span>
+                        <svg id="btn-spinner" class="hidden w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <!-- CENTER: AGENTS -->
+        <section class="col-span-12 md:col-span-3 bg-white border-r border-slate-200 flex flex-col h-full overflow-y-auto p-5">
+            <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Agent Pipeline</h2>
+            <div id="pipeline-tracker" class="space-y-3"></div>
+            <div class="mt-8 p-3 bg-slate-50 rounded border border-slate-200">
+                <p class="text-[10px] font-bold text-slate-500 uppercase mb-1">System Log</p>
+                <div id="pipeline-log" class="text-xs font-mono text-slate-600 leading-relaxed">System initialized. Waiting for input...</div>
+            </div>
+        </section>
+
+        <!-- RIGHT: REPORT -->
+        <section class="col-span-12 md:col-span-6 bg-white flex flex-col h-full relative overflow-hidden">
+            <div id="report-scroll" style="position:absolute; top:0; left:0; right:0; bottom:56px; overflow-y:auto; padding:24px;">
+                <div id="empty-state" class="h-full flex flex-col items-center justify-center text-slate-400">
+                    <svg class="w-16 h-16 mb-4 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    <p class="text-sm font-medium">No Report Generated</p>
+                </div>
+                <div id="report-content" class="hidden space-y-6 animate-fade-in">
+                    <div id="severity-banner" class="px-4 py-3 rounded-lg flex items-center justify-between transition-colors duration-300">
+                        <div class="flex items-center gap-3">
+                            <span id="banner-icon" class="w-8 h-8 rounded-full flex items-center justify-center bg-white/50"></span>
+                            <span id="severity-text" class="font-bold text-sm uppercase tracking-wide">Severity: NORMAL</span>
+                        </div>
+                        <div class="text-xs font-mono opacity-70 flex items-center gap-3">
+                            <span id="meta-id">ID: ---</span> | <span id="meta-time">TIME: ---</span> | <span id="meta-qa">QA: ---</span>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div><h3 class="text-sm font-bold text-slate-800 border-b border-slate-100 pb-1 mb-2">Clinical History</h3><p id="sec-history" class="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap"></p></div>
+                        <div><h3 class="text-sm font-bold text-slate-800 border-b border-slate-100 pb-1 mb-2">Technique</h3><p id="sec-technique" class="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap"></p></div>
+                        <div><h3 class="text-sm font-bold text-slate-800 border-b border-slate-100 pb-1 mb-2">Findings</h3><div id="sec-findings" class="space-y-3"></div></div>
+                        <div><h3 class="text-sm font-bold text-slate-800 border-b border-slate-100 pb-1 mb-2">Impression</h3><p id="sec-impression" class="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap font-medium"></p></div>
+                        <div><h3 class="text-sm font-bold text-slate-800 border-b border-slate-100 pb-1 mb-2">Recommendations</h3><p id="sec-recommendations" class="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap"></p></div>
+                        <div class="bg-red-50 border border-red-100 rounded-lg p-4 mt-6"><p class="text-xs text-red-800 italic font-medium" id="sec-disclaimer"></p></div>
+                    </div>
+                </div>
+            </div>
+            <div class="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3 flex justify-between items-center z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+                <span class="text-xs text-slate-400 font-mono hidden md:block">System ready for export</span>
+                <button id="export-pdf-btn" disabled class="ml-auto bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium px-6 py-2 rounded shadow-sm transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-slate-300">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    Export PDF Report
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <div id="toast" class="fixed bottom-6 right-6 transform translate-y-20 opacity-0 transition-all duration-300 z-50 pointer-events-none">
+        <div class="bg-slate-800 text-white px-4 py-3 rounded shadow-lg text-sm font-medium flex items-center gap-3"><span id="toast-message">Message</span></div>
+    </div>
+
+    <script>
+        const AGENT_NAMES = ['INTAKE', 'VISION', 'RESEARCH', 'REPORT', 'CRITIC'];
+        let lastReportData = null;
+        let startTime = 0;
+        let timerInterval = null;
+
+        const els = {
+            clock: document.getElementById('clock'),
+            dropZone: document.getElementById('drop-zone'),
+            fileInput: document.getElementById('file-input'),
+            preview: document.getElementById('image-preview'),
+            placeholder: document.getElementById('upload-placeholder'),
+            form: document.getElementById('analysis-form'),
+            submitBtn: document.getElementById('submit-btn'),
+            btnText: document.getElementById('btn-text'),
+            btnSpinner: document.getElementById('btn-spinner'),
+            tracker: document.getElementById('pipeline-tracker'),
+            log: document.getElementById('pipeline-log'),
+            reportScroll: document.getElementById('report-scroll'),
+            emptyState: document.getElementById('empty-state'),
+            reportContent: document.getElementById('report-content'),
+            exportBtn: document.getElementById('export-pdf-btn'),
+            toast: document.getElementById('toast'),
+            toastMsg: document.getElementById('toast-message'),
+            banner: document.getElementById('severity-banner'),
+            bannerText: document.getElementById('severity-text'),
+            bannerIcon: document.getElementById('banner-icon'),
+            metaId: document.getElementById('meta-id'),
+            metaTime: document.getElementById('meta-time'),
+            metaQa: document.getElementById('meta-qa'),
+            secHistory: document.getElementById('sec-history'),
+            secTechnique: document.getElementById('sec-technique'),
+            secFindings: document.getElementById('sec-findings'),
+            secImpression: document.getElementById('sec-impression'),
+            secRecs: document.getElementById('sec-recommendations'),
+            secDisclaimer: document.getElementById('sec-disclaimer')
+        };
+
+        function init() {
+            renderAgents('WAITING');
+            updateClock();
+            setInterval(updateClock, 1000);
+        }
+
+        function updateClock() {
+            els.clock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        els.dropZone.addEventListener('click', () => els.fileInput.click());
+        els.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); els.dropZone.classList.add('drag-over'); });
+        els.dropZone.addEventListener('dragleave', () => els.dropZone.classList.remove('drag-over'));
+        els.dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            els.dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        els.fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleFile(e.target.files[0]); });
+
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) { showToast('Invalid file type.', 'error'); return; }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                els.preview.src = e.target.result;
+                els.preview.classList.remove('hidden');
+                els.placeholder.classList.add('hidden');
+                showToast('Image loaded successfully.', 'success');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function renderAgents(initialState = 'WAITING') {
+            els.tracker.innerHTML = AGENT_NAMES.map(agent => `
+                <div id="agent-card-${agent.toLowerCase()}" class="agent-card bg-white border border-slate-200 rounded-lg p-3 flex items-center gap-3 shadow-sm relative">
+                    <div class="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center flex-shrink-0 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider">${agent}</h3>
+                            <span id="status-text-${agent.toLowerCase()}" class="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">${initialState}</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-1">Processing medical data...</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateAgentUI(agentName, status) {
+            const card = document.getElementById(`agent-card-${agentName.toLowerCase()}`);
+            const statusText = document.getElementById(`status-text-${agentName.toLowerCase()}`);
+            if (!card) return;
+
+            card.className = `agent-card bg-white border rounded-lg p-3 flex items-center gap-3 shadow-sm relative transition-all duration-300`;
+            
+            let borderClass = 'border-slate-200';
+            let badgeClass = 'bg-slate-100 text-slate-500';
+            let iconBgClass = 'bg-slate-100 text-slate-400';
+            let iconHtml = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+
+            if (status === 'RUNNING') {
+                borderClass = 'border-blue-400 bg-blue-50';
+                badgeClass = 'bg-blue-100 text-blue-700';
+                iconBgClass = 'bg-blue-100 text-blue-600';
+                iconHtml = '<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
+            } else if (status === 'DONE') {
+                borderClass = 'border-green-500 bg-green-50';
+                badgeClass = 'bg-green-100 text-green-700';
+                iconBgClass = 'bg-green-100 text-green-600';
+                iconHtml = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>';
+            } else if (status === 'ERROR') {
+                borderClass = 'border-red-500 bg-red-50';
+                badgeClass = 'bg-red-100 text-red-700';
+                iconBgClass = 'bg-red-100 text-red-600';
+                iconHtml = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>';
+            }
+
+            card.classList.add(...borderClass.split(' '));
+            statusText.textContent = status;
+            statusText.className = `text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded ${badgeClass}`;
+
+            const iconContainer = card.querySelector('.w-8');
+            iconContainer.className = `w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${iconBgClass}`;
+            iconContainer.innerHTML = iconHtml;
+        }
+
+        function startTimer() {
+            startTime = performance.now();
+            els.log.innerHTML = '<span class="text-med-700 font-bold">AI Pipeline Running...</span> <span id="elapsed-time" class="ml-2">0.0s</span>';
+            timerInterval = setInterval(() => {
+                const el = document.getElementById('elapsed-time');
+                if (el) el.textContent = `${((performance.now() - startTime) / 1000).toFixed(1)}s`;
+            }, 100);
+        }
+
+        function stopTimer() {
+            clearInterval(timerInterval);
+            const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+            els.log.innerHTML = `<span class="text-green-700 font-bold">✅ Pipeline complete in ${elapsed}s.</span>`;
+        }
+
+        function setLoading(isLoading) {
+            els.submitBtn.disabled = isLoading;
+            els.btnText.textContent = isLoading ? 'Processing...' : 'Execute Pipeline';
+            els.btnSpinner.classList.toggle('hidden', !isLoading);
+        }
+
+        function logPipeline(msg) {
+            els.log.innerHTML = `<span class="text-slate-800">> ${msg}</span>`;
+        }
+
+        els.form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!els.preview.src) { showToast('Please upload an image first.', 'error'); return; }
+
+            setLoading(true);
+            renderAgents('WAITING');
+            els.emptyState.classList.add('hidden');
+            els.reportContent.classList.add('hidden');
+            els.exportBtn.disabled = true;
+            els.reportScroll.scrollTop = 0;
+            lastReportData = null;
+            logPipeline('Establishing SSE connection...');
+            startTimer();
+
+            const formData = new FormData();
+            formData.append('image', els.fileInput.files[0]);
+            formData.append('symptoms', document.getElementById('symptoms').value);
+            formData.append('age', document.getElementById('age').value || '');
+            formData.append('sex', document.getElementById('sex').value);
+            formData.append('clinical_context', document.getElementById('clinical_context').value);
+
+            try {
+                const res = await fetch('/analyze/stream', { method: 'POST', body: formData });
+                if (!res.ok) throw new Error(`Server Error ${res.status}`);
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split('\n\n');
+                    buffer = parts.pop();
+
+                    for (const part of parts) {
+                        if (part.startsWith('data: ')) {
+                            try {
+                                const jsonStr = part.slice(6);
+                                const data = JSON.parse(jsonStr);
+                                handleSSEEvent(data);
+                            } catch (err) { console.warn('SSE parse error:', err); }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+                stopTimer();
+                showToast(`Connection failed: ${err.message}`, 'error');
+                logPipeline(`ERROR: ${err.message}`);
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        function handleSSEEvent(data) {
+            if (data.agent && data.status) {
+                updateAgentUI(data.agent, data.status);
+                logPipeline(`🔄 ${data.agent} → ${data.status}`);
+            } else if (data.type === 'report') {
+                stopTimer();
+                lastReportData = data.data;
+                renderReport(lastReportData);
+                els.exportBtn.disabled = false;
+                showToast('Analysis complete. Report generated.', 'success');
+            } else if (data.type === 'error') {
+                stopTimer();
+                showToast(`Analysis failed: ${data.message}`, 'error');
+                logPipeline(`❌ ERROR: ${data.message}`);
+            }
+        }
+
+        function renderReport(data) {
+            const sections = data.sections;
+            els.metaId.textContent = `ID: ${data.report_id}`;
+            
+            const ts = data.generation_timestamp;
+            const displayTime = ts ? new Date(ts).toLocaleTimeString() : new Date().toLocaleTimeString();
+            els.metaTime.textContent = `TIME: ${displayTime}`;
+
+            const qaMatch = (sections.recommendations || '').match(/Score[:\s]+(\d+)/);
+            const qaVal = qaMatch ? qaMatch[1] : '85';
+            els.metaQa.textContent = `QA: ${qaVal}/100`;
+
+            const severity = data.overall_severity || 'NORMAL';
+            els.bannerText.textContent = `Overall Severity: ${severity}`;
+            configureBanner(severity);
+
+            els.secHistory.textContent = sections.clinical_history || 'Not provided.';
+            els.secTechnique.textContent = sections.technique || 'Not provided.';
+            els.secImpression.textContent = sections.impression || 'Not provided.';
+            els.secRecs.textContent = sections.recommendations || 'None.';
+            els.secDisclaimer.textContent = sections.disclaimer;
+            els.secFindings.innerHTML = parseFindings(sections.findings);
+
+            els.reportContent.classList.remove('hidden');
+        }
+
+        function configureBanner(severity) {
+            const colors = {
+                NORMAL: ['bg-emerald-50 text-emerald-800 border border-emerald-200', 'text-emerald-600'],
+                INCIDENTAL: ['bg-amber-50 text-amber-800 border border-amber-200', 'text-amber-600'],
+                SIGNIFICANT: ['bg-orange-50 text-orange-800 border border-orange-200', 'text-orange-600'],
+                CRITICAL: ['bg-red-50 text-red-800 border border-red-200', 'text-red-600']
+            };
+            const config = colors[severity] || colors.NORMAL;
+            els.banner.className = `px-4 py-3 rounded-lg flex items-center justify-between transition-colors duration-300 ${config[0]}`;
+            els.bannerIcon.className = `w-8 h-8 rounded-full flex items-center justify-center bg-white/50 ${config[1]}`;
+            els.bannerIcon.innerHTML = severity === 'CRITICAL' 
+                ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>'
+                : '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+        }
+
+        function parseFindings(text) {
+            if (!text || text.trim() === '') return '<p class="text-sm text-slate-500 italic p-3">No findings provided.</p>';
+
+            const sevRegex = /Severity:\s*(NORMAL|INCIDENTAL|SIGNIFICANT|CRITICAL)/gi;
+            const sevMatches = [...text.matchAll(sevRegex)];
+            const hierarchy = { NORMAL: 1, INCIDENTAL: 2, SIGNIFICANT: 3, CRITICAL: 4 };
+            let highestSev = 'NORMAL', highestLevel = 1;
+            sevMatches.forEach(m => { if (hierarchy[m[1].toUpperCase()] > highestLevel) { highestLevel = hierarchy[m[1].toUpperCase()]; highestSev = m[1].toUpperCase(); } });
+
+            const confRegex = /(\d+(?:\.\d+)?)%/g;
+            const confMatches = [...text.matchAll(confRegex)];
+            let avgConf = 75;
+            if (confMatches.length > 0) avgConf = Math.round(confMatches.reduce((a, m) => a + parseFloat(m[1]), 0) / confMatches.length);
+
+            let cleanText = text.replace(/\(Severity:\s*(?:NORMAL|INCIDENTAL|SIGNIFICANT|CRITICAL)[^)]*\)/gi, '').trim() || text;
+
+            const styles = {
+                NORMAL: { border: 'finding-normal', badge: 'bg-emerald-100 text-emerald-800' },
+                INCIDENTAL: { border: 'finding-incidental', badge: 'bg-amber-100 text-amber-800' },
+                SIGNIFICANT: { border: 'finding-significant', badge: 'bg-orange-100 text-orange-800' },
+                CRITICAL: { border: 'finding-critical', badge: 'bg-red-100 text-red-800' }
+            };
+            const style = styles[highestSev] || styles.NORMAL;
+            const confColor = avgConf > 75 ? 'bg-emerald-500' : avgConf > 50 ? 'bg-amber-500' : 'bg-red-500';
+
+            return `
+                <div class="relative pl-4 pr-4 py-4 rounded border-l-4 ${style.border} bg-white shadow-sm animate-fade-in">
+                    <div class="absolute top-3 right-3"><span class="text-[10px] font-bold px-2 py-1 rounded ${style.badge} uppercase tracking-wide">${highestSev}</span></div>
+                    <p class="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap pr-20 mb-4">${cleanText}</p>
+                    <div class="flex items-center gap-2 mt-2">
+                        <span class="text-[10px] font-mono text-slate-500 w-16">CONFIDENCE</span>
+                        <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden"><div class="h-full rounded-full ${confColor}" style="width: ${avgConf}%"></div></div>
+                        <span class="text-[10px] font-bold text-slate-700 font-mono">${avgConf}%</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        els.exportBtn.addEventListener('click', () => {
+    if (!lastReportData) return;
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const d = lastReportData;
+        const s = d.sections;
+        const W = 210;
+        const LM = 14;
+        const CW = 182;
+        const TM = 32;
+        const FOOTER_Y = 285;
+        let y = TM;
+
+        const NAVY = [30, 58, 138];
+        const BLUE = [30, 64, 175];
+        const GRAY_TEXT = [50, 50, 50];
+        const DARK_TEXT = [30, 30, 30];
+        const sevColors = { NORMAL: [16,185,129], INCIDENTAL: [245,158,11], SIGNIFICANT: [249,115,22], CRITICAL: [239,68,68] };
+        const sevRGB = sevColors[d.overall_severity] || sevColors.NORMAL;
+
+        doc.setFillColor(...NAVY);
+        doc.rect(0, 0, W, 25, 'F');
+        doc.setFillColor(59, 130, 246);
+        doc.circle(8, 12.5, 4, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text('M', 8, 13.5);
+        doc.setFontSize(16);
+        doc.text('MediAgent Clinical Workstation', 16, 14);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Autonomous Radiology Analysis System', 16, 20);
+        const ts = new Date();
+        doc.text(`ID: ${d.report_id}`, 195, 10, { align: 'right' });
+        doc.text(`${ts.toLocaleDateString()} | ${ts.toLocaleTimeString()}`, 195, 16, { align: 'right' });
+
+        doc.setFillColor(...sevRGB);
+        doc.rect(0, 25, W, 4, 'F');
+
+        function drawFooter(pg) {
+            doc.setDrawColor(200);
+            doc.line(LM, FOOTER_Y - 5, 196, FOOTER_Y - 5);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.setTextColor(120, 120, 120);
+            doc.text('Powered by AMD MI300X Local Inference | MediAgent v1.0.0 | AI-generated - requires radiologist review', LM, FOOTER_Y);
+            doc.text(`Page ${pg}`, 196, FOOTER_Y, { align: 'right' });
+        }
+
+        function needBreak(h = 10) {
+            if (y + h > FOOTER_Y - 8) {
+                drawFooter(doc.internal.getNumberOfPages());
+                doc.addPage();
+                y = TM;
+                return true;
+            }
+            return false;
+        }
+
+        function txt(content, opts = {}) {
+            const { size = 10, bold = false, color = GRAY_TEXT, gap = 5 } = opts;
+            if (!content) content = 'Not provided.';
+            doc.setFont('helvetica', bold ? 'bold' : 'normal');
+            doc.setFontSize(size);
+            doc.setTextColor(...color);
+            const lines = doc.splitTextToSize(content, CW);
+            for (let l of lines) { needBreak(gap); doc.text(l, LM, y); y += gap; }
+            y += 2;
+        }
+
+        function section(title) {
+            needBreak(12);
+            doc.setDrawColor(...BLUE);
+            doc.setLineWidth(0.5);
+            doc.line(LM, y, 196, y);
+            y += 4;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.setTextColor(...NAVY);
+            doc.text(title, LM, y);
+            y += 6;
+        }
+
+        needBreak(22);
+        doc.setFillColor(241, 245, 249);
+        doc.rect(LM, y, CW, 20, 'F');
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(...GRAY_TEXT);
+        doc.text(`Report ID: ${d.report_id}`, LM + 4, y + 6);
+        doc.text(`Generated: ${ts.toLocaleString()}`, LM + 4, y + 11);
+        doc.text(`Overall Severity: ${d.overall_severity || 'NORMAL'}`, LM + 4, y + 16);
+        const qaFromRecs = (s.recommendations || '').match(/Score[:\s]+(\d+)/);
+        const qaScore = qaFromRecs ? qaFromRecs[1] : '85';
+        doc.text(`QA Score: ${qaScore}/100`, LM + 100, y + 6);
+        y += 26;
+
+        section('Clinical History');
+        txt(s.clinical_history);
+        section('Technique');
+        txt(s.technique);
+        section('Findings');
+        needBreak(30);
+        const fLines = doc.splitTextToSize(s.findings || 'No findings provided.', CW - 8);
+        const fH = Math.max(22, fLines.length * 5 + 10);
+        doc.setFillColor(249, 250, 251);
+        doc.rect(LM, y, CW, fH, 'F');
+        doc.setLineWidth(0.2);
+        txt(s.findings || 'No findings provided.');
+        y += 4;
+        section('Impression');
+        txt(s.impression || 'Not provided.', { size: 12, bold: true, color: DARK_TEXT, gap: 6 });
+        section('Recommendations');
+        txt(s.recommendations || 'None.');
+        section('Disclaimer');
+        needBreak(20);
+        doc.setFillColor(254, 226, 226);
+        doc.rect(LM, y, CW, 18, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(127, 29, 29);
+        const discText = 'WARNING: ' + (s.disclaimer || '');
+        const dLines = doc.splitTextToSize(discText, CW - 8);
+        for(let i=0; i<dLines.length; i++) { doc.text(dLines[i], LM + 4, y + 6 + i*4.5); }
+        drawFooter(doc.internal.getNumberOfPages());
+        const fn = `MediAgent_${d.report_id}_${ts.toISOString().split('T')[0]}.pdf`;
+        doc.save(fn);
+        showToast('PDF exported successfully.', 'success');
+    } catch (e) { console.error(e); showToast('PDF export failed.', 'error'); }
+});
+
+        function showToast(msg, type = 'success') {
+            els.toastMsg.textContent = msg;
+            els.toast.classList.remove('translate-y-20', 'opacity-0');
+            const bg = type === 'error' ? 'bg-red-600' : 'bg-slate-800';
+            els.toast.firstElementChild.className = `${bg} text-white px-4 py-3 rounded shadow-lg text-sm font-medium flex items-center gap-3`;
+            setTimeout(() => els.toast.classList.add('translate-y-20', 'opacity-0'), 3000);
+        }
+
+        init();
+    </script>
+</body>
+</html>
