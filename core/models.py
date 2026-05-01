@@ -159,6 +159,29 @@ class FinalReport(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CHAT / ADVISOR MODELS
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ChatMessage(BaseModel):
+    """Single turn in the post-report clinical advisor chat."""
+    role: str = Field(..., description="'user' or 'assistant'")
+    content: str = Field(..., description="Message text")
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+
+class ChatRequest(BaseModel):
+    """Incoming question for the ClinicalAdvisorAgent."""
+    question: str = Field(..., min_length=3, max_length=1000)
+
+
+class ChatResponse(BaseModel):
+    """Response from the ClinicalAdvisorAgent."""
+    answer: str
+    report_id: str
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PIPELINE STATE MODEL
 # ─────────────────────────────────────────────────────────────────────────────
 

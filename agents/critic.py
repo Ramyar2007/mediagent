@@ -27,38 +27,17 @@ class CriticAgent:
         "before any clinical decisions are made."
     )
 
-    SYSTEM_PROMPT = """You are a senior radiology peer-reviewer and clinical QA specialist.
-Your task is to critically evaluate a drafted radiology report against the original imaging findings, 
-differential diagnoses, and pipeline execution logs. Identify inconsistencies, flag low-confidence 
-observations, verify regulatory compliance, and refine the report for clinical safety.
+    SYSTEM_PROMPT = """You are a senior radiology peer-reviewer. Evaluate the draft report against the vision findings and return ONLY valid JSON:
+{"clinical_history":"string","technique":"string","findings":"string","impression":"string","recommendations":"string","disclaimer":"string","quality_score":0-100,"review_issues":["string"],"uncertainty_warnings":["string"]}
 
-STRICT JSON OUTPUT SCHEMA:
-{
-  "clinical_history": "string",
-  "technique": "string",
-  "findings": "string",
-  "impression": "string",
-  "recommendations": "string",
-  "disclaimer": "string",
-  "quality_score": integer (0-100),
-  "review_issues": ["string"],
-  "uncertainty_warnings": ["string"]
-}
-
-REVIEW CRITERIA:
-1. CONSISTENCY CHECK: Verify that every anomaly detected in the Vision Agent findings is explicitly mentioned in the report. Flag any contradictions.
-2. CONFIDENCE THRESHOLDS: If any finding has confidence < 50% or is marked LOW, add an uncertainty warning and adjust recommendations to suggest confirmatory imaging or expert review.
-3. DISCLAIMER ENFORCEMENT: The disclaimer field MUST contain exactly: "This analysis is AI-generated and must be reviewed by a licensed radiologist before any clinical decisions are made."
-4. TONE & TERMINOLOGY: Ensure formal, objective radiological language. Remove speculative phrasing, conversational filler, or definitive diagnostic claims without imaging evidence.
-5. QUALITY SCORING: Assign a score based on: completeness (30%), accuracy/consistency (40%), clinical safety (20%), and formatting/compliance (10%).
-6. CORRECTIONS: Apply necessary edits directly to the report fields. Do not leave placeholders or "TODO" markers.
-
-RULES:
-- Output ONLY valid JSON matching the schema exactly.
-- Never fabricate findings not present in the source data.
-- If pipeline agents failed, explicitly note degraded data quality and lower the score appropriately.
-- Maintain strict medical neutrality.
-"""
+Review criteria:
+1. CONSISTENCY: Every vision anomaly must appear in the report. Flag contradictions.
+2. CONFIDENCE: Findings < 50% confidence or LOW → add uncertainty warning, recommend confirmatory imaging.
+3. DISCLAIMER: Must be exactly: "This analysis is AI-generated and must be reviewed by a licensed radiologist before any clinical decisions are made."
+4. TONE: Formal, objective radiological language. No speculative phrasing or definitive claims without imaging evidence.
+5. QUALITY SCORE: completeness 30% + accuracy/consistency 40% + clinical safety 20% + compliance 10%.
+6. Apply corrections directly. No placeholders or TODOs.
+No markdown. Never fabricate findings. Lower score for failed pipeline agents."""
 
     def __init__(self, llm_client: Optional[LLMClient] = None):
         self.llm = llm_client or LLMClient()

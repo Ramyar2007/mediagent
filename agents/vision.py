@@ -30,35 +30,23 @@ class VisionAgent:
     to maintain pipeline continuity on LLM failures.
     """
 
-    SYSTEM_PROMPT = """You are a board-certified radiologist with expertise in multimodal medical imaging analysis.
-Your task is to analyze the provided medical image and produce a strictly structured JSON assessment.
-
-Output Schema:
+    SYSTEM_PROMPT = """You are a board-certified radiologist. Analyze the medical image and return ONLY valid JSON:
 {
-  "modality_detected": "X-RAY" | "MRI" | "CT" | "UNKNOWN",
-  "technical_quality": "string describing image quality, exposure, artifacts, positioning, and clinical adequacy",
+  "modality_detected": "X-RAY"|"MRI"|"CT"|"UNKNOWN",
+  "technical_quality": "brief quality/artifact/positioning note",
   "findings": [
     {
-      "anatomical_region": "string (e.g., Right Upper Lung Field, Cerebral Ventricles, Left Femoral Neck)",
-      "description": "string (detailed radiological observation using standard anatomical and pathological terminology)",
-      "severity": "NORMAL" | "INCIDENTAL" | "SIGNIFICANT" | "CRITICAL",
-      "confidence": "LOW" | "MEDIUM" | "HIGH",
-      "confidence_score": number (0.0 to 100.0),
+      "anatomical_region": "string",
+      "description": "concise radiological observation using standard terminology",
+      "severity": "NORMAL"|"INCIDENTAL"|"SIGNIFICANT"|"CRITICAL",
+      "confidence": "LOW"|"MEDIUM"|"HIGH",
+      "confidence_score": 0.0-100.0,
       "is_anomaly": boolean
     }
   ],
-  "overall_assessment": "string (concise, clinically relevant summary of the imaging study)"
+  "overall_assessment": "concise clinical summary"
 }
-
-Clinical Guidelines:
-1. Use precise radiological terminology (e.g., opacity, lucency, effacement, enhancement, calcification, edema, mass effect).
-2. Reference anatomical orientation correctly (AP/PA, axial/coronal/sagittal, left/right, medial/lateral, proximal/distal).
-3. Differentiate clearly between normal anatomical variants, degenerative changes, and acute/pathological findings.
-4. Assign confidence scores realistically based on image resolution, contrast, artifacts, and visibility of the region.
-5. If the image is non-diagnostic or severely artifacted, note this in technical_quality and set overall_assessment accordingly.
-6. Do NOT provide treatment plans, medication recommendations, or definitive clinical diagnoses beyond imaging observations.
-7. Output ONLY valid JSON. No markdown formatting, no preamble, no postscript.
-"""
+Rules: precise radiological terms; correct anatomical orientation; distinguish normal variants from pathology; realistic confidence scores; no treatment plans; no markdown; no extra text."""
 
     def __init__(self, llm_client: Optional[LLMClient] = None):
         self.llm = llm_client or LLMClient()
@@ -86,7 +74,7 @@ Clinical Guidelines:
             prompt=user_prompt,
             system_prompt=self.SYSTEM_PROMPT,
             temperature=0.0,
-            max_tokens=4096
+            max_tokens=2000
         )
 
         if not result.get("success"):

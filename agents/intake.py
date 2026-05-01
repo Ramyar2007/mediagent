@@ -113,40 +113,75 @@ class IntakeAgent:
             flags.append("PATIENT_AGE: GERIATRIC_CONSIDERATIONS_RECOMMENDED")
         return flags
 
-    def _normalize_with_llm(self, inp: PatientInput, existing_flags: List[str]) -> Dict[str, Any]:
-        """Use LLM to standardize clinical text and extract structured demographics."""
-        prompt = f"""You are a clinical data standardization expert. 
-Convert the following raw patient input into standardized clinical terminology and extract demographics.
-Respond ONLY with a JSON object matching this schema:
-{{
-  "standardized_symptoms": "string",
-  "extracted_demographics": {{ "age": int|null, "sex": "M|F|O"|null, "comorbidities": ["string"] }},
-  "safety_flags": ["string"],
-  "processing_notes": "string"
-}}
+    # Layman-to-medical term map for fast deterministic normalization
+    LAYMAN_TERMS = {
+        "can't breathe": "dyspnea", "hard to breathe": "dyspnea", "difficulty breathing": "dyspnea",
+        "stomach pain": "abdominal pain", "belly pain": "abdominal pain", "tummy pain": "abdominal pain",
+        "chest tightness": "chest pain/pressure", "heart racing": "palpitations",
+        "blurry vision": "visual disturbance", "can't see clearly": "visual disturbance",
+        "dizzy": "dizziness/vertigo", "feel faint": "presyncope", "passed out": "syncope",
+        "throwing up": "vomiting", "nausea and vomiting": "nausea/emesis",
+        "back pain": "dorsal pain", "leg pain": "lower extremity pain",
+        "arm pain": "upper extremity pain", "neck pain": "cervicalgia",
+        "headache": "cephalgia", "head pain": "cephalgia",
+        "swollen": "edema", "swelling": "edema", "bruise": "ecchymosis",
+        "lump": "mass/nodule", "bump": "mass/nodule"
+    }
 
-Raw Input:
+    def _normalize_with_llm(self, inp: PatientInput, existing_flags: List[str]) -> Dict[str, Any]:
+        """
+        Normalize clinical text. Uses fast deterministic mapping for simple inputs;
+        falls back to LLM only for complex or lengthy clinical context.
+        """
+        combined_text = f"{inp.symptoms or ''} {inp.clinical_context or ''}".strip()
+
+        # Skip LLM for short/simple inputs — deterministic normalization is sufficient
+        if len(combined_text) <= 120 and not any(
+            indicator in combined_text.lower()
+            for indicator in ["history of", "diagnosed with", "chronic", "prior", "previous", "medication", "allerg"]
+        ):
+            logger.debug("⚡ Short input detected — using fast deterministic normalization (skipping LLM)")
+            return self._fast_normalize(inp, existing_flags)
+
+        prompt = f"""You are a clinical data standardization expert.
+Convert raw patient input to standardized clinical terminology. Respond ONLY with JSON:
+{{"standardized_symptoms":"string","extracted_demographics":{{"age":int|null,"sex":"M|F|O"|null,"comorbidities":["string"]}},"safety_flags":["string"],"processing_notes":"string"}}
+
+Input:
 - Symptoms: "{inp.symptoms or 'Not provided'}"
 - Age: {inp.age}
 - Sex: {inp.sex}
 - Clinical Context: "{inp.clinical_context or 'Not provided'}"
-- Existing Safety Flags: {existing_flags}
+- Existing Flags: {existing_flags}
 
-Guidelines:
-1. Convert layman symptoms to medical terminology (e.g., "can't breathe" -> "dyspnea", "stomach pain" -> "abdominal pain").
-2. Extract or infer comorbidities from context if mentioned.
-3. Add any additional clinical safety flags not already detected.
-4. Provide concise processing notes summarizing data quality.
-5. Maintain exact JSON structure. No markdown, no extra text."""
+Rules: convert layman terms to medical terminology; extract comorbidities; add safety flags; no markdown."""
 
         result = self.llm.generate_text(prompt=prompt, force_json=True)
         if result.get("success") and result.get("content"):
             parsed = LLMClient.extract_json_from_response(result["content"])
             if parsed:
                 return parsed
-        
+
         logger.warning("⚠️ LLM normalization failed. Using deterministic fallback.")
         return self._build_fallback_dict(inp, existing_flags)
+
+    def _fast_normalize(self, inp: PatientInput, flags: List[str]) -> Dict[str, Any]:
+        """Deterministic normalization using term mapping — zero LLM calls."""
+        text = f"{inp.symptoms or ''} {inp.clinical_context or ''}".lower()
+        normalized = inp.symptoms or "No symptoms provided"
+        for layman, medical in self.LAYMAN_TERMS.items():
+            if layman in text:
+                normalized = normalized.lower().replace(layman, medical)
+        return {
+            "standardized_symptoms": normalized.strip(),
+            "extracted_demographics": {
+                "age": inp.age,
+                "sex": inp.sex,
+                "comorbidities": []
+            },
+            "safety_flags": flags,
+            "processing_notes": "Fast deterministic normalization applied."
+        }
 
     def _infer_modality(self, inp: PatientInput, llm_data: Dict[str, Any]) -> ImageModality:
         """Infer imaging modality from text hints or default to UNKNOWN."""

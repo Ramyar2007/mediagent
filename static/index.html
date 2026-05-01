@@ -3,609 +3,831 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MediAgent | Autonomous Radiology Pipeline</title>
+    <title>MediAgent v2 | AMD MI300X Radiology AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+                    fontFamily: { sans: ['Inter','sans-serif'], mono: ['JetBrains Mono','monospace'] },
                     colors: {
-                        med: { 50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a' }
+                        med: { 50:'#eff6ff',100:'#dbeafe',200:'#bfdbfe',500:'#3b82f6',600:'#2563eb',700:'#1d4ed8',800:'#1e40af',900:'#1e3a8a' },
+                        amd: { 400:'#f97316',500:'#ea580c',600:'#c2410c' }
                     }
                 }
             }
         }
     </script>
     <style>
-        body { height: 100vh; overflow: hidden; background: #f1f5f9; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
-        .agent-card { transition: all 0.3s ease; }
-        .drop-zone { transition: all 0.2s ease; }
-        .drop-zone.drag-over { border-color: #2563eb; background-color: #eff6ff; transform: scale(1.005); }
-        
-        .finding-normal { border-left-color: #10b981; }
-        .finding-incidental { border-left-color: #f59e0b; }
-        .finding-significant { border-left-color: #f97316; }
-        .finding-critical { border-left-color: #ef4444; }
+        * { box-sizing: border-box; }
+        body { height:100vh; overflow:hidden; background:#f1f5f9; }
+        ::-webkit-scrollbar { width:5px; height:5px; }
+        ::-webkit-scrollbar-track { background:transparent; }
+        ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes typing { from{opacity:0} to{opacity:1} }
+        .animate-fade-in { animation:fadeIn 0.3s ease-out forwards; }
+        .drop-zone.drag-over { border-color:#2563eb !important; background:#eff6ff !important; transform:scale(1.01); }
+        .finding-NORMAL    { border-left-color:#10b981; }
+        .finding-INCIDENTAL{ border-left-color:#f59e0b; }
+        .finding-SIGNIFICANT{border-left-color:#f97316; }
+        .finding-CRITICAL  { border-left-color:#ef4444; }
+        .chat-bubble-user { background:#1e40af; color:#fff; border-radius:12px 12px 2px 12px; }
+        .chat-bubble-ai   { background:#f1f5f9; color:#1e293b; border-radius:12px 12px 12px 2px; }
+        .token-stream { white-space:pre-wrap; }
+        .gpu-bar { transition: width 0.8s ease; }
+        .panel-tab.active { border-bottom:2px solid #2563eb; color:#1d4ed8; font-weight:600; }
+        .dicom-badge { background:linear-gradient(135deg,#1e40af,#7c3aed); }
     </style>
 </head>
-<body class="flex flex-col text-slate-800">
+<body class="flex flex-col text-slate-800 font-sans">
 
-    <!-- HEADER -->
-    <header class="h-16 bg-slate-900 text-white flex items-center justify-between px-6 shrink-0 z-10 shadow-md">
-        <div class="flex items-center gap-3">
-            <div class="w-8 h-8 bg-med-600 rounded flex items-center justify-center font-bold text-white">M</div>
-            <div>
-                <h1 class="font-bold text-lg tracking-tight">MediAgent <span class="text-med-400 font-medium">Workstation</span></h1>
-                <div class="flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                    <span class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">System Online</span>
-                </div>
+<!-- ═══════════════════════════════════════════════════════════════════ HEADER -->
+<header class="h-14 bg-slate-900 text-white flex items-center justify-between px-5 shrink-0 z-20 shadow-lg">
+    <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-med-600 rounded-lg flex items-center justify-center font-black text-white text-sm">M</div>
+        <div>
+            <div class="flex items-center gap-2">
+                <h1 class="font-bold text-base tracking-tight leading-none">MediAgent <span class="text-med-400">v2</span></h1>
+                <span class="text-[9px] bg-amd-500 text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">AMD MI300X</span>
+            </div>
+            <div class="flex items-center gap-1.5 mt-0.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+                <span class="text-[9px] uppercase tracking-widest text-slate-400">System Online</span>
             </div>
         </div>
-        <div class="flex items-center gap-4">
-            <span id="clock" class="text-xs font-mono text-slate-400"></span>
-            <div class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1 rounded-full">
-                <span class="text-xs font-semibold text-slate-300">AMD MI300X Local Inference</span>
-            </div>
+    </div>
+    <div class="flex items-center gap-3">
+        <div id="gpu-header-badge" class="hidden items-center gap-2 bg-slate-800 border border-orange-500/30 px-3 py-1 rounded-full">
+            <span class="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse"></span>
+            <span class="text-[10px] font-mono text-orange-300" id="gpu-header-text">GPU: --</span>
         </div>
-    </header>
+        <span id="clock" class="text-xs font-mono text-slate-400"></span>
+    </div>
+</header>
 
-    <!-- MAIN GRID -->
-    <main class="flex-1 grid grid-cols-12 gap-0 overflow-hidden">
+<!-- ═══════════════════════════════════════════════════════════════════ MAIN -->
+<main class="flex-1 grid grid-cols-12 overflow-hidden" style="height:calc(100vh - 56px)">
 
-        <!-- LEFT: INPUT -->
-        <section class="col-span-12 md:col-span-3 bg-slate-50 border-r border-slate-200 flex flex-col h-full overflow-y-auto p-5 gap-5">
+    <!-- ══ LEFT: INPUT ══════════════════════════════════════════════════════ -->
+    <section class="col-span-3 bg-slate-50 border-r border-slate-200 flex flex-col overflow-y-auto">
+        <div class="p-4 flex flex-col gap-4">
+
+            <!-- Upload zone -->
             <div>
-                <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Input Data</h2>
-                
-                <div id="drop-zone" class="drop-zone border-2 border-dashed border-slate-300 rounded-lg p-6 text-center cursor-pointer bg-white hover:border-med-500 mb-4 group relative">
-                    <input type="file" id="file-input" class="hidden" accept="image/png,image/jpeg">
+                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Medical Image</p>
+                <div id="drop-zone" class="drop-zone border-2 border-dashed border-slate-300 rounded-xl p-5 text-center cursor-pointer bg-white hover:border-med-500 transition-all relative group">
+                    <input type="file" id="file-input" class="hidden" accept="image/png,image/jpeg,.dcm,application/dicom">
                     <div id="upload-placeholder">
-                        <svg class="w-10 h-10 text-slate-400 mx-auto mb-2 group-hover:text-med-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                        <p class="text-sm font-medium text-slate-600">Upload Medical Image</p>
-                        <p class="text-xs text-slate-400 mt-1">PNG / JPG (Max 20MB)</p>
+                        <svg class="w-9 h-9 text-slate-300 mx-auto mb-2 group-hover:text-med-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        <p class="text-xs font-semibold text-slate-500">Drop image or click to upload</p>
+                        <p class="text-[10px] text-slate-400 mt-1">PNG · JPG · <span class="text-purple-600 font-semibold">DICOM (.dcm)</span></p>
                     </div>
-                    <img id="image-preview" class="hidden w-full h-40 object-contain rounded bg-slate-100 mx-auto" alt="Preview">
+                    <img id="image-preview" class="hidden w-full h-36 object-contain rounded-lg bg-slate-100" alt="Preview">
+                    <div id="dicom-info" class="hidden mt-2 p-2 dicom-badge rounded-lg text-white text-[10px] font-mono leading-relaxed"></div>
                 </div>
+            </div>
 
-                <form id="analysis-form" class="space-y-4">
+            <!-- Form -->
+            <form id="analysis-form" class="space-y-3">
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">Chief Complaint</label>
+                    <textarea id="symptoms" rows="2" class="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-med-500 focus:border-med-500 outline-none resize-none" placeholder="e.g. Chest pain, shortness of breath..."></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 mb-1">Chief Complaint</label>
-                        <textarea id="symptoms" rows="3" class="w-full text-sm border border-slate-300 rounded p-2.5 focus:ring-2 focus:ring-med-500 focus:border-med-500 outline-none resize-none" placeholder="e.g., Chest pain, shortness of breath..."></textarea>
-                    </div>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-700 mb-1">Age</label>
-                            <input type="number" id="age" min="0" max="120" class="w-full text-sm border border-slate-300 rounded p-2.5 focus:ring-2 focus:ring-med-500 outline-none" placeholder="Yrs">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-700 mb-1">Sex</label>
-                            <select id="sex" class="w-full text-sm border border-slate-300 rounded p-2.5 focus:ring-2 focus:ring-med-500 outline-none bg-white">
-                                <option value="">Select</option>
-                                <option value="M">Male</option>
-                                <option value="F">Female</option>
-                                <option value="O">Other</option>
-                            </select>
-                        </div>
+                        <label class="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">Age</label>
+                        <input type="number" id="age" min="0" max="120" class="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-med-500 outline-none" placeholder="Yrs">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 mb-1">Clinical History</label>
-                        <textarea id="clinical_context" rows="2" class="w-full text-sm border border-slate-300 rounded p-2.5 focus:ring-2 focus:ring-med-500 outline-none resize-none" placeholder="Relevant history..."></textarea>
-                    </div>
-                    <button type="submit" id="submit-btn" class="w-full bg-med-800 hover:bg-med-900 text-white font-semibold py-2.5 rounded shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-                        <span id="btn-text">Execute Pipeline</span>
-                        <svg id="btn-spinner" class="hidden w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                    </button>
-                </form>
-            </div>
-        </section>
-
-        <!-- CENTER: AGENTS -->
-        <section class="col-span-12 md:col-span-3 bg-white border-r border-slate-200 flex flex-col h-full overflow-y-auto p-5">
-            <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Agent Pipeline</h2>
-            <div id="pipeline-tracker" class="space-y-3"></div>
-            <div class="mt-8 p-3 bg-slate-50 rounded border border-slate-200">
-                <p class="text-[10px] font-bold text-slate-500 uppercase mb-1">System Log</p>
-                <div id="pipeline-log" class="text-xs font-mono text-slate-600 leading-relaxed">System initialized. Waiting for input...</div>
-            </div>
-        </section>
-
-        <!-- RIGHT: REPORT -->
-        <section class="col-span-12 md:col-span-6 bg-white flex flex-col h-full relative overflow-hidden">
-            <div id="report-scroll" style="position:absolute; top:0; left:0; right:0; bottom:56px; overflow-y:auto; padding:24px;">
-                <div id="empty-state" class="h-full flex flex-col items-center justify-center text-slate-400">
-                    <svg class="w-16 h-16 mb-4 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                    <p class="text-sm font-medium">No Report Generated</p>
-                </div>
-                <div id="report-content" class="hidden space-y-6 animate-fade-in">
-                    <div id="severity-banner" class="px-4 py-3 rounded-lg flex items-center justify-between transition-colors duration-300">
-                        <div class="flex items-center gap-3">
-                            <span id="banner-icon" class="w-8 h-8 rounded-full flex items-center justify-center bg-white/50"></span>
-                            <span id="severity-text" class="font-bold text-sm uppercase tracking-wide">Severity: NORMAL</span>
-                        </div>
-                        <div class="text-xs font-mono opacity-70 flex items-center gap-3">
-                            <span id="meta-id">ID: ---</span> | <span id="meta-time">TIME: ---</span> | <span id="meta-qa">QA: ---</span>
-                        </div>
-                    </div>
-                    <div class="space-y-4">
-                        <div><h3 class="text-sm font-bold text-slate-800 border-b border-slate-100 pb-1 mb-2">Clinical History</h3><p id="sec-history" class="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap"></p></div>
-                        <div><h3 class="text-sm font-bold text-slate-800 border-b border-slate-100 pb-1 mb-2">Technique</h3><p id="sec-technique" class="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap"></p></div>
-                        <div><h3 class="text-sm font-bold text-slate-800 border-b border-slate-100 pb-1 mb-2">Findings</h3><div id="sec-findings" class="space-y-3"></div></div>
-                        <div><h3 class="text-sm font-bold text-slate-800 border-b border-slate-100 pb-1 mb-2">Impression</h3><p id="sec-impression" class="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap font-medium"></p></div>
-                        <div><h3 class="text-sm font-bold text-slate-800 border-b border-slate-100 pb-1 mb-2">Recommendations</h3><p id="sec-recommendations" class="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap"></p></div>
-                        <div class="bg-red-50 border border-red-100 rounded-lg p-4 mt-6"><p class="text-xs text-red-800 italic font-medium" id="sec-disclaimer"></p></div>
+                        <label class="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">Sex</label>
+                        <select id="sex" class="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-med-500 outline-none bg-white">
+                            <option value="">Select</option>
+                            <option value="M">Male</option>
+                            <option value="F">Female</option>
+                            <option value="O">Other</option>
+                        </select>
                     </div>
                 </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">Clinical History</label>
+                    <textarea id="clinical_context" rows="2" class="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-med-500 outline-none resize-none" placeholder="Relevant history, medications..."></textarea>
+                </div>
+                <button type="submit" id="submit-btn" class="w-full bg-med-800 hover:bg-med-900 text-white font-bold py-2.5 rounded-lg shadow transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed text-sm">
+                    <span id="btn-text">Run Analysis</span>
+                    <svg id="btn-spinner" class="hidden w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                </button>
+            </form>
+
+            <!-- AMD GPU Panel -->
+            <div style="background: var(--color-background-primary); border-radius: var(--border-radius-lg); border: 0.5px solid var(--color-border-tertiary); padding: 14px 16px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2" /><path d="M6 6V4M10 6V4M14 6V4M18 6V4M6 20v-2M10 20v-2M14 20v-2M18 20v-2" /></svg>
+                        <span style="font-size: 11px; font-weight: 500; color: #f97316; letter-spacing: 0.06em; text-transform: uppercase;">AMD GPU Metrics</span>
+                    </div>
+                    <span id="gpu-status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-border-secondary); display: inline-block;"></span>
+                </div>
+                <div id="gpu-panel-content">
+                    <p style="font-size: 11px; color: var(--color-text-tertiary); font-family: var(--font-mono); text-align: center; padding: 8px 0; margin: 0;">Polling GPU...</p>
+                </div>
             </div>
-            <div class="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3 flex justify-between items-center z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
-                <span class="text-xs text-slate-400 font-mono hidden md:block">System ready for export</span>
-                <button id="export-pdf-btn" disabled class="ml-auto bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium px-6 py-2 rounded shadow-sm transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-slate-300">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                    Export PDF Report
+
+        </div>
+    </section>
+
+    <!-- ══ CENTER: PIPELINE + CHARTS ════════════════════════════════════════ -->
+    <section class="col-span-3 bg-white border-r border-slate-200 flex flex-col overflow-hidden">
+        <!-- Tabs -->
+        <div class="flex border-b border-slate-200 px-4 pt-3 gap-4 shrink-0">
+            <button class="panel-tab active text-[11px] pb-2 px-1 text-slate-500 transition-colors" onclick="switchTab('pipeline',this)">Pipeline</button>
+            <button class="panel-tab text-[11px] pb-2 px-1 text-slate-500 transition-colors" onclick="switchTab('charts',this)">Analytics</button>
+        </div>
+
+        <!-- Pipeline tab -->
+        <div id="tab-pipeline" class="flex-1 overflow-y-auto p-4 space-y-3">
+            <div id="pipeline-tracker"></div>
+            <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 mt-2">
+                <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">System Log</p>
+                <div id="pipeline-log" class="text-[11px] font-mono text-slate-600 leading-relaxed">Waiting for input...</div>
+                <div id="pipeline-timer" class="text-[11px] font-mono text-med-600 mt-1 hidden"></div>
+            </div>
+        </div>
+
+        <!-- Analytics tab -->
+        <div id="tab-charts" class="hidden flex-1 overflow-y-auto p-4 space-y-4">
+            <div>
+                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Severity Distribution</p>
+                <div class="flex justify-center"><canvas id="severityChart" width="160" height="160"></canvas></div>
+            </div>
+            <div>
+                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Finding Confidence</p>
+                <canvas id="confidenceChart" height="160"></canvas>
+            </div>
+            <div>
+                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Agent Timing (s)</p>
+                <canvas id="timingChart" height="120"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <!-- ══ RIGHT: REPORT + CHAT ════════════════════════════════════════════ -->
+    <section class="col-span-6 flex flex-col overflow-hidden bg-white">
+
+        <!-- Report area -->
+        <div id="report-scroll" class="flex-1 overflow-y-auto px-6 py-5">
+            <!-- Empty state -->
+            <div id="empty-state" class="h-full flex flex-col items-center justify-center text-slate-300">
+                <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                <p class="text-sm font-medium text-slate-400">Upload an image and run analysis</p>
+                <p class="text-xs text-slate-300 mt-1">Supports PNG, JPG, DICOM</p>
+            </div>
+
+            <!-- Final report -->
+            <div id="report-content" class="hidden space-y-5 animate-fade-in">
+
+                <!-- Severity banner -->
+                <div id="severity-banner" class="px-4 py-3 rounded-xl flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span id="banner-icon" class="w-8 h-8 rounded-full flex items-center justify-center bg-white/50"></span>
+                        <span id="severity-text" class="font-bold text-sm uppercase tracking-wide">Severity: NORMAL</span>
+                    </div>
+                    <div class="text-[10px] font-mono opacity-75 flex items-center gap-3">
+                        <span id="meta-id">---</span>
+                        <span>|</span>
+                        <span id="meta-time">---</span>
+                        <span>|</span>
+                        <span id="meta-qa" class="font-bold">QA ---</span>
+                    </div>
+                </div>
+
+                <!-- DICOM metadata card -->
+                <div id="dicom-meta-card" class="hidden p-3 rounded-xl border border-purple-200 bg-purple-50">
+                    <p class="text-[10px] font-bold text-purple-700 uppercase tracking-widest mb-2">DICOM Metadata</p>
+                    <div id="dicom-meta-content" class="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] font-mono text-purple-800"></div>
+                </div>
+
+                <!-- Report sections -->
+                <div class="space-y-4">
+                    <div><h3 class="text-xs font-bold text-slate-700 border-b border-slate-100 pb-1 mb-2 uppercase tracking-wide">Clinical History</h3><p id="sec-history" class="text-sm text-slate-600 leading-relaxed"></p></div>
+                    <div><h3 class="text-xs font-bold text-slate-700 border-b border-slate-100 pb-1 mb-2 uppercase tracking-wide">Technique</h3><p id="sec-technique" class="text-sm text-slate-600 leading-relaxed"></p></div>
+                    <div><h3 class="text-xs font-bold text-slate-700 border-b border-slate-100 pb-1 mb-2 uppercase tracking-wide">Findings</h3><div id="sec-findings" class="space-y-2"></div></div>
+                    <div><h3 class="text-xs font-bold text-slate-700 border-b border-slate-100 pb-1 mb-2 uppercase tracking-wide">Impression</h3><p id="sec-impression" class="text-sm text-slate-700 leading-relaxed font-medium"></p></div>
+                    <div><h3 class="text-xs font-bold text-slate-700 border-b border-slate-100 pb-1 mb-2 uppercase tracking-wide">Recommendations</h3><p id="sec-recommendations" class="text-sm text-slate-600 leading-relaxed"></p></div>
+                    <div class="bg-red-50 border border-red-100 rounded-xl p-4"><p class="text-[11px] text-red-800 italic font-medium" id="sec-disclaimer"></p></div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Bottom bar: actions + chat -->
+        <div class="border-t border-slate-200 bg-white shrink-0">
+
+            <!-- Action buttons -->
+            <div class="flex items-center gap-2 px-4 py-2 border-b border-slate-100">
+                <button id="export-pdf-btn" disabled class="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold px-4 py-1.5 rounded-lg shadow disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    Export PDF
+                </button>
+                <button id="toggle-chat-btn" disabled class="ml-auto flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-1.5 rounded-lg shadow disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                    Ask AI Consultant
                 </button>
             </div>
-        </section>
-    </main>
 
-    <div id="toast" class="fixed bottom-6 right-6 transform translate-y-20 opacity-0 transition-all duration-300 z-50 pointer-events-none">
-        <div class="bg-slate-800 text-white px-4 py-3 rounded shadow-lg text-sm font-medium flex items-center gap-3"><span id="toast-message">Message</span></div>
+            <!-- Clinical chat -->
+            <div id="chat-panel" class="hidden flex flex-col" style="height:240px">
+                <div id="chat-messages" class="flex-1 overflow-y-auto px-4 py-3 space-y-2 bg-slate-50"></div>
+                <div class="flex gap-2 px-4 py-2 bg-white border-t border-slate-100">
+                    <input id="chat-input" type="text" placeholder="Ask a follow-up question about the report..." class="flex-1 text-xs border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400 outline-none">
+                    <button id="chat-send-btn" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all">Send</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<!-- Toast -->
+<div id="toast" class="fixed bottom-5 right-5 translate-y-16 opacity-0 transition-all duration-300 z-50 pointer-events-none">
+    <div id="toast-inner" class="bg-slate-800 text-white px-4 py-2.5 rounded-lg shadow-xl text-xs font-medium flex items-center gap-2">
+        <span id="toast-message">Message</span>
     </div>
+</div>
 
-    <script>
-        const AGENT_NAMES = ['INTAKE', 'VISION', 'RESEARCH', 'REPORT', 'CRITIC'];
-        let lastReportData = null;
-        let startTime = 0;
-        let timerInterval = null;
+<script>
+// ═══════════════════════════════════════════════════════ GLOBALS
+const AGENTS = ['INTAKE','VISION','RESEARCH','REPORT','CRITIC'];
+let lastReportData = null;
+let currentReportId = null;
+let startTime = 0;
+let timerInterval = null;
+let agentTimings = {};
+let agentStartTimes = {};
+let severityChart = null;
+let confidenceChart = null;
+let timingChart = null;
+let gpuPollInterval = null;
 
-        const els = {
-            clock: document.getElementById('clock'),
-            dropZone: document.getElementById('drop-zone'),
-            fileInput: document.getElementById('file-input'),
-            preview: document.getElementById('image-preview'),
-            placeholder: document.getElementById('upload-placeholder'),
-            form: document.getElementById('analysis-form'),
-            submitBtn: document.getElementById('submit-btn'),
-            btnText: document.getElementById('btn-text'),
-            btnSpinner: document.getElementById('btn-spinner'),
-            tracker: document.getElementById('pipeline-tracker'),
-            log: document.getElementById('pipeline-log'),
-            reportScroll: document.getElementById('report-scroll'),
-            emptyState: document.getElementById('empty-state'),
-            reportContent: document.getElementById('report-content'),
-            exportBtn: document.getElementById('export-pdf-btn'),
-            toast: document.getElementById('toast'),
-            toastMsg: document.getElementById('toast-message'),
-            banner: document.getElementById('severity-banner'),
-            bannerText: document.getElementById('severity-text'),
-            bannerIcon: document.getElementById('banner-icon'),
-            metaId: document.getElementById('meta-id'),
-            metaTime: document.getElementById('meta-time'),
-            metaQa: document.getElementById('meta-qa'),
-            secHistory: document.getElementById('sec-history'),
-            secTechnique: document.getElementById('sec-technique'),
-            secFindings: document.getElementById('sec-findings'),
-            secImpression: document.getElementById('sec-impression'),
-            secRecs: document.getElementById('sec-recommendations'),
-            secDisclaimer: document.getElementById('sec-disclaimer')
-        };
+// ═══════════════════════════════════════════════════════ INIT
+function init() {
+    renderAgents();
+    setInterval(() => {
+        document.getElementById('clock').textContent = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    }, 1000);
+    startGpuPolling();
+}
 
-        function init() {
-            renderAgents('WAITING');
-            updateClock();
-            setInterval(updateClock, 1000);
+// ═══════════════════════════════════════════════════════ TAB SWITCHING
+function switchTab(name, btn) {
+    document.querySelectorAll('.panel-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-pipeline').classList.toggle('hidden', name !== 'pipeline');
+    document.getElementById('tab-charts').classList.toggle('hidden', name !== 'charts');
+}
+
+// ═══════════════════════════════════════════════════════ FILE UPLOAD
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => { if (e.target.files.length) handleFile(e.target.files[0]); });
+
+function handleFile(file) {
+    const isDicom = file.name.toLowerCase().endsWith('.dcm') || file.type === 'application/dicom';
+    if (!isDicom && !file.type.startsWith('image/')) { showToast('Unsupported file type.', 'error'); return; }
+
+    const reader = new FileReader();
+    reader.onload = e => {
+        const preview = document.getElementById('image-preview');
+        const placeholder = document.getElementById('upload-placeholder');
+        const dicomInfo = document.getElementById('dicom-info');
+
+        if (isDicom) {
+            preview.classList.add('hidden');
+            placeholder.classList.add('hidden');
+            dicomInfo.classList.remove('hidden');
+            dicomInfo.innerHTML = `📂 DICOM File Detected<br><span class="opacity-75">${file.name}</span><br><span class="opacity-60">${(file.size/1024).toFixed(1)} KB</span>`;
+            showToast('DICOM file loaded — metadata will be auto-extracted', 'success');
+        } else {
+            preview.src = e.target.result;
+            preview.classList.remove('hidden');
+            placeholder.classList.add('hidden');
+            dicomInfo.classList.add('hidden');
+            showToast('Image loaded.', 'success');
         }
+    };
+    if (isDicom) {
+        reader.readAsArrayBuffer(file);
+    } else {
+        reader.readAsDataURL(file);
+    }
+}
 
-        function updateClock() {
-            els.clock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        }
-
-        els.dropZone.addEventListener('click', () => els.fileInput.click());
-        els.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); els.dropZone.classList.add('drag-over'); });
-        els.dropZone.addEventListener('dragleave', () => els.dropZone.classList.remove('drag-over'));
-        els.dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            els.dropZone.classList.remove('drag-over');
-            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-        });
-        els.fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleFile(e.target.files[0]); });
-
-        function handleFile(file) {
-            if (!file.type.startsWith('image/')) { showToast('Invalid file type.', 'error'); return; }
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                els.preview.src = e.target.result;
-                els.preview.classList.remove('hidden');
-                els.placeholder.classList.add('hidden');
-                showToast('Image loaded successfully.', 'success');
-            };
-            reader.readAsDataURL(file);
-        }
-
-        function renderAgents(initialState = 'WAITING') {
-            els.tracker.innerHTML = AGENT_NAMES.map(agent => `
-                <div id="agent-card-${agent.toLowerCase()}" class="agent-card bg-white border border-slate-200 rounded-lg p-3 flex items-center gap-3 shadow-sm relative">
-                    <div class="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center flex-shrink-0 transition-colors">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    </div>
-                    <div class="flex-1">
-                        <div class="flex justify-between items-center">
-                            <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider">${agent}</h3>
-                            <span id="status-text-${agent.toLowerCase()}" class="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">${initialState}</span>
-                        </div>
-                        <p class="text-[10px] text-slate-400 mt-1">Processing medical data...</p>
-                    </div>
+// ═══════════════════════════════════════════════════════ AGENT PIPELINE UI
+function renderAgents() {
+    document.getElementById('pipeline-tracker').innerHTML = AGENTS.map(a => `
+        <div id="card-${a}" class="rounded-xl border border-slate-200 bg-white p-3 flex items-center gap-3 transition-all duration-300">
+            <div id="icon-${a}" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0 transition-all">
+                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/></svg>
+            </div>
+            <div class="flex-1 min-w-0">
+                <div class="flex justify-between items-center">
+                    <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wider">${a}</span>
+                    <span id="badge-${a}" class="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">WAITING</span>
                 </div>
-            `).join('');
-        }
+                <span id="timing-${a}" class="text-[9px] font-mono text-slate-400"></span>
+            </div>
+        </div>
+    `).join('');
+}
 
-        function updateAgentUI(agentName, status) {
-            const card = document.getElementById(`agent-card-${agentName.toLowerCase()}`);
-            const statusText = document.getElementById(`status-text-${agentName.toLowerCase()}`);
-            if (!card) return;
+function updateAgent(name, status, elapsed) {
+    const card = document.getElementById(`card-${name}`);
+    const badge = document.getElementById(`badge-${name}`);
+    const icon  = document.getElementById(`icon-${name}`);
+    const timEl = document.getElementById(`timing-${name}`);
+    if (!card) return;
 
-            card.className = `agent-card bg-white border rounded-lg p-3 flex items-center gap-3 shadow-sm relative transition-all duration-300`;
-            
-            let borderClass = 'border-slate-200';
-            let badgeClass = 'bg-slate-100 text-slate-500';
-            let iconBgClass = 'bg-slate-100 text-slate-400';
-            let iconHtml = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+    const cfg = {
+        WAITING:  { card:'border-slate-200 bg-white',         badge:'bg-slate-100 text-slate-500',   icon:'bg-slate-100',   iconHtml:'<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/></svg>' },
+        RUNNING:  { card:'border-blue-400 bg-blue-50',         badge:'bg-blue-100 text-blue-700',     icon:'bg-blue-100',    iconHtml:'<svg class="w-4 h-4 text-blue-600 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>' },
+        DONE:     { card:'border-green-400 bg-green-50',       badge:'bg-green-100 text-green-700',   icon:'bg-green-100',   iconHtml:'<svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>' },
+        ERROR:    { card:'border-red-400 bg-red-50',           badge:'bg-red-100 text-red-700',       icon:'bg-red-100',     iconHtml:'<svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>' },
+    };
+    const c = cfg[status] || cfg.WAITING;
+    card.className = `rounded-xl border p-3 flex items-center gap-3 transition-all duration-300 ${c.card}`;
+    badge.className = `text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ${c.badge}`;
+    badge.textContent = status;
+    icon.className = `w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all ${c.icon}`;
+    icon.innerHTML = c.iconHtml;
+    if (elapsed !== undefined) timEl.textContent = `${elapsed.toFixed(2)}s`;
+}
 
-            if (status === 'RUNNING') {
-                borderClass = 'border-blue-400 bg-blue-50';
-                badgeClass = 'bg-blue-100 text-blue-700';
-                iconBgClass = 'bg-blue-100 text-blue-600';
-                iconHtml = '<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
-            } else if (status === 'DONE') {
-                borderClass = 'border-green-500 bg-green-50';
-                badgeClass = 'bg-green-100 text-green-700';
-                iconBgClass = 'bg-green-100 text-green-600';
-                iconHtml = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>';
-            } else if (status === 'ERROR') {
-                borderClass = 'border-red-500 bg-red-50';
-                badgeClass = 'bg-red-100 text-red-700';
-                iconBgClass = 'bg-red-100 text-red-600';
-                iconHtml = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>';
-            }
+// ═══════════════════════════════════════════════════════ SUBMIT
+document.getElementById('analysis-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const files = fileInput.files;
+    if (!files.length) { showToast('Upload an image first.', 'error'); return; }
 
-            card.classList.add(...borderClass.split(' '));
-            statusText.textContent = status;
-            statusText.className = `text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded ${badgeClass}`;
+    setLoading(true);
+    renderAgents();
+    resetReport();
+    agentTimings = {};
+    agentStartTimes = {};
+    startTimer();
+    log('Sending to AMD MI300X pipeline...');
 
-            const iconContainer = card.querySelector('.w-8');
-            iconContainer.className = `w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${iconBgClass}`;
-            iconContainer.innerHTML = iconHtml;
-        }
+    const fd = new FormData();
+    fd.append('image', files[0]);
+    fd.append('symptoms', document.getElementById('symptoms').value);
+    fd.append('age', document.getElementById('age').value || '');
+    fd.append('sex', document.getElementById('sex').value);
+    fd.append('clinical_context', document.getElementById('clinical_context').value);
 
-        function startTimer() {
-            startTime = performance.now();
-            els.log.innerHTML = '<span class="text-med-700 font-bold">AI Pipeline Running...</span> <span id="elapsed-time" class="ml-2">0.0s</span>';
-            timerInterval = setInterval(() => {
-                const el = document.getElementById('elapsed-time');
-                if (el) el.textContent = `${((performance.now() - startTime) / 1000).toFixed(1)}s`;
-            }, 100);
-        }
+    try {
+        const res = await fetch('/analyze/stream', { method:'POST', body:fd });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        function stopTimer() {
-            clearInterval(timerInterval);
-            const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-            els.log.innerHTML = `<span class="text-green-700 font-bold">✅ Pipeline complete in ${elapsed}s.</span>`;
-        }
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
 
-        function setLoading(isLoading) {
-            els.submitBtn.disabled = isLoading;
-            els.btnText.textContent = isLoading ? 'Processing...' : 'Execute Pipeline';
-            els.btnSpinner.classList.toggle('hidden', !isLoading);
-        }
-
-        function logPipeline(msg) {
-            els.log.innerHTML = `<span class="text-slate-800">> ${msg}</span>`;
-        }
-
-        els.form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            if (!els.preview.src) { showToast('Please upload an image first.', 'error'); return; }
-
-            setLoading(true);
-            renderAgents('WAITING');
-            els.emptyState.classList.add('hidden');
-            els.reportContent.classList.add('hidden');
-            els.exportBtn.disabled = true;
-            els.reportScroll.scrollTop = 0;
-            lastReportData = null;
-            logPipeline('Establishing SSE connection...');
-            startTimer();
-
-            const formData = new FormData();
-            formData.append('image', els.fileInput.files[0]);
-            formData.append('symptoms', document.getElementById('symptoms').value);
-            formData.append('age', document.getElementById('age').value || '');
-            formData.append('sex', document.getElementById('sex').value);
-            formData.append('clinical_context', document.getElementById('clinical_context').value);
-
-            try {
-                const res = await fetch('/analyze/stream', { method: 'POST', body: formData });
-                if (!res.ok) throw new Error(`Server Error ${res.status}`);
-
-                const reader = res.body.getReader();
-                const decoder = new TextDecoder('utf-8');
-                let buffer = '';
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-
-                    buffer += decoder.decode(value, { stream: true });
-                    const parts = buffer.split('\n\n');
-                    buffer = parts.pop();
-
-                    for (const part of parts) {
-                        if (part.startsWith('data: ')) {
-                            try {
-                                const jsonStr = part.slice(6);
-                                const data = JSON.parse(jsonStr);
-                                handleSSEEvent(data);
-                            } catch (err) { console.warn('SSE parse error:', err); }
-                        }
-                    }
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream:true });
+            const parts = buf.split('\n\n');
+            buf = parts.pop();
+            for (const part of parts) {
+                if (part.startsWith('data: ')) {
+                    try { handleSSE(JSON.parse(part.slice(6))); } catch {}
                 }
-            } catch (err) {
-                console.error(err);
-                stopTimer();
-                showToast(`Connection failed: ${err.message}`, 'error');
-                logPipeline(`ERROR: ${err.message}`);
-            } finally {
-                setLoading(false);
             }
+        }
+    } catch (err) {
+        stopTimer();
+        showToast(`Error: ${err.message}`, 'error');
+        log(`ERROR: ${err.message}`);
+    } finally {
+        setLoading(false);
+    }
+});
+
+function handleSSE(data) {
+    if (data.agent && data.status) {
+        const now = performance.now();
+        if (data.status === 'RUNNING') {
+            agentStartTimes[data.agent] = now;
+        } else if (data.status === 'DONE' || data.status === 'ERROR') {
+            const elapsed = agentStartTimes[data.agent] ? (now - agentStartTimes[data.agent]) / 1000 : 0;
+            agentTimings[data.agent] = elapsed;
+            updateAgent(data.agent, data.status, elapsed);
+        }
+        if (data.status === 'RUNNING') updateAgent(data.agent, 'RUNNING');
+        log(`${data.agent} → ${data.status}`);
+        return;
+    }
+
+    if (data.type === 'report') {
+        stopTimer();
+        lastReportData = data.data;
+        currentReportId = data.report_id || data.data?.report_id;
+        renderReport(data.data);
+        updateCharts(data.data);
+        document.getElementById('export-pdf-btn').disabled = false;
+        document.getElementById('toggle-chat-btn').disabled = false;
+        showToast('Analysis complete.', 'success');
+        return;
+    }
+
+    if (data.type === 'error') {
+        stopTimer();
+        showToast(`Pipeline error: ${data.message}`, 'error');
+        log(`ERROR: ${data.message}`);
+    }
+}
+
+// ═══════════════════════════════════════════════════════ REPORT RENDER
+function resetReport() {
+    document.getElementById('empty-state').classList.remove('hidden');
+    document.getElementById('report-content').classList.add('hidden');
+    document.getElementById('dicom-meta-card').classList.add('hidden');
+    document.getElementById('export-pdf-btn').disabled = true;
+    document.getElementById('toggle-chat-btn').disabled = true;
+    document.getElementById('chat-panel').classList.add('hidden');
+    document.getElementById('chat-messages').innerHTML = '';
+}
+
+function renderReport(data) {
+    const s = data.sections;
+    document.getElementById('empty-state').classList.add('hidden');
+    document.getElementById('report-content').classList.remove('hidden');
+
+    // Severity banner
+    const sev = data.overall_severity || 'NORMAL';
+    const bannerCfg = {
+        NORMAL:      'bg-emerald-50 text-emerald-800 border border-emerald-200',
+        INCIDENTAL:  'bg-amber-50 text-amber-800 border border-amber-200',
+        SIGNIFICANT: 'bg-orange-50 text-orange-800 border border-orange-200',
+        CRITICAL:    'bg-red-50 text-red-800 border border-red-200 animate-pulse',
+    };
+    const banner = document.getElementById('severity-banner');
+    banner.className = `px-4 py-3 rounded-xl flex items-center justify-between ${bannerCfg[sev] || bannerCfg.NORMAL}`;
+    document.getElementById('severity-text').textContent = `Severity: ${sev}`;
+
+    const iconCfg = { NORMAL:'✅', INCIDENTAL:'⚠️', SIGNIFICANT:'🔶', CRITICAL:'🚨' };
+    document.getElementById('banner-icon').textContent = iconCfg[sev] || '✅';
+
+    // Meta
+    document.getElementById('meta-id').textContent = data.report_id || '---';
+    document.getElementById('meta-time').textContent = data.generation_timestamp
+        ? new Date(data.generation_timestamp).toLocaleTimeString() : '---';
+    const qaM = (s.recommendations || '').match(/Score[:\s]+(\d+)/);
+    document.getElementById('meta-qa').textContent = `QA ${qaM ? qaM[1] : '85'}/100`;
+
+    // DICOM metadata
+    if (data.dicom_metadata && Object.keys(data.dicom_metadata).length) {
+        const card = document.getElementById('dicom-meta-card');
+        const content = document.getElementById('dicom-meta-content');
+        card.classList.remove('hidden');
+        const show = ['modality','body_part','study_date','institution','kvp','slice_thickness_mm','image_rows','image_cols'];
+        content.innerHTML = show
+            .filter(k => data.dicom_metadata[k])
+            .map(k => `<div><span class="opacity-60">${k.replace(/_/g,' ')}:</span> <span class="font-semibold">${data.dicom_metadata[k]}</span></div>`)
+            .join('');
+    }
+
+    // Sections
+    document.getElementById('sec-history').textContent      = s.clinical_history   || 'Not provided.';
+    document.getElementById('sec-technique').textContent    = s.technique           || 'Not provided.';
+    document.getElementById('sec-impression').textContent   = s.impression          || 'Not provided.';
+    document.getElementById('sec-recommendations').textContent = s.recommendations  || 'None.';
+    document.getElementById('sec-disclaimer').textContent   = s.disclaimer;
+    document.getElementById('sec-findings').innerHTML       = renderFindings(s.findings);
+
+    document.getElementById('report-scroll').scrollTop = 0;
+}
+
+function renderFindings(text) {
+    if (!text) return '<p class="text-xs text-slate-400 italic">No findings.</p>';
+    const sevOrder = { CRITICAL:4, SIGNIFICANT:3, INCIDENTAL:2, NORMAL:1 };
+    const sevColors = {
+        NORMAL:      { border:'finding-NORMAL',      badge:'bg-emerald-100 text-emerald-800', bar:'bg-emerald-500' },
+        INCIDENTAL:  { border:'finding-INCIDENTAL',  badge:'bg-amber-100 text-amber-800',    bar:'bg-amber-500' },
+        SIGNIFICANT: { border:'finding-SIGNIFICANT', badge:'bg-orange-100 text-orange-800',  bar:'bg-orange-500' },
+        CRITICAL:    { border:'finding-CRITICAL',    badge:'bg-red-100 text-red-800',        bar:'bg-red-500' },
+    };
+
+    // Find highest severity in text
+    let topSev = 'NORMAL';
+    for (const sev of ['CRITICAL','SIGNIFICANT','INCIDENTAL','NORMAL']) {
+        if (text.toUpperCase().includes(sev)) { topSev = sev; break; }
+    }
+
+    // Extract confidence scores
+    const confMatches = [...text.matchAll(/(\d+(?:\.\d+)?)%/g)];
+    const avgConf = confMatches.length
+        ? Math.round(confMatches.reduce((a,m) => a + parseFloat(m[1]), 0) / confMatches.length)
+        : 75;
+
+    const c = sevColors[topSev] || sevColors.NORMAL;
+    const confColor = avgConf >= 75 ? 'bg-emerald-500' : avgConf >= 50 ? 'bg-amber-500' : 'bg-red-500';
+
+    return `
+        <div class="pl-4 pr-4 py-4 rounded-lg border-l-4 ${c.border} bg-white shadow-sm">
+            <div class="flex justify-between items-start mb-3">
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded ${c.badge} uppercase">${topSev}</span>
+                <span class="text-[10px] font-mono text-slate-500">${avgConf}% avg confidence</span>
+            </div>
+            <p class="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap mb-3">${text}</p>
+            <div class="flex items-center gap-2">
+                <span class="text-[9px] font-mono text-slate-400 uppercase w-16">Confidence</span>
+                <div class="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full ${confColor} transition-all duration-1000" style="width:${avgConf}%"></div>
+                </div>
+                <span class="text-[10px] font-bold font-mono text-slate-600">${avgConf}%</span>
+            </div>
+        </div>`;
+}
+
+// ═══════════════════════════════════════════════════════ CHARTS
+function updateCharts(data) {
+        // Severity donut — read directly from structured vision findings
+        const sevCounts = { NORMAL: 0, INCIDENTAL: 0, SIGNIFICANT: 0, CRITICAL: 0 };
+        const visionFindings = data.vision_findings || [];
+        if (visionFindings.length > 0) {
+            for (const f of visionFindings) {
+                const sev = (f.severity || 'NORMAL').toUpperCase();
+                if (sev in sevCounts) sevCounts[sev]++;
+            }
+        }
+        if (Object.values(sevCounts).every(v => v === 0)) sevCounts[data.overall_severity || 'NORMAL'] = 1;
+
+        if (severityChart) severityChart.destroy();
+        severityChart = new Chart(document.getElementById('severityChart'), {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(sevCounts),
+                datasets: [{ data: Object.values(sevCounts), backgroundColor: ['#10b981', '#f59e0b', '#f97316', '#ef4444'], borderWidth: 2, borderColor: '#fff' }]
+            },
+            options: { responsive: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, padding: 8 } } }, cutout: '65%' }
         });
 
-        function handleSSEEvent(data) {
-            if (data.agent && data.status) {
-                updateAgentUI(data.agent, data.status);
-                logPipeline(`🔄 ${data.agent} → ${data.status}`);
-            } else if (data.type === 'report') {
-                stopTimer();
-                lastReportData = data.data;
-                renderReport(lastReportData);
-                els.exportBtn.disabled = false;
-                showToast('Analysis complete. Report generated.', 'success');
-            } else if (data.type === 'error') {
-                stopTimer();
-                showToast(`Analysis failed: ${data.message}`, 'error');
-                logPipeline(`❌ ERROR: ${data.message}`);
-            }
-        }
+        // Confidence bar — read directly from structured differential diagnoses
+        const differentials = data.differential_diagnoses || [];
+        const labels = differentials.length > 0
+            ? differentials.map(d => (d.condition_name || 'Unknown').slice(0, 22))
+            : ['Dx 1', 'Dx 2', 'Dx 3'];
+        const probs = differentials.length > 0
+            ? differentials.map(d => Math.round(parseFloat(d.match_probability) || 0))
+            : [0, 0, 0];
 
-        function renderReport(data) {
-            const sections = data.sections;
-            els.metaId.textContent = `ID: ${data.report_id}`;
-            
-            const ts = data.generation_timestamp;
-            const displayTime = ts ? new Date(ts).toLocaleTimeString() : new Date().toLocaleTimeString();
-            els.metaTime.textContent = `TIME: ${displayTime}`;
+        if (confidenceChart) confidenceChart.destroy();
+        confidenceChart = new Chart(document.getElementById('confidenceChart'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{ label: 'Probability %', data: probs, backgroundColor: ['#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#f97316'], borderRadius: 4 }]
+            },
+            options: { responsive: true, indexAxis: 'y', scales: { x: { max: 100, ticks: { font: { size: 9 } } }, y: { ticks: { font: { size: 9 } } } }, plugins: { legend: { display: false } } }
+        });
 
-            const qaMatch = (sections.recommendations || '').match(/Score[:\s]+(\d+)/);
-            const qaVal = qaMatch ? qaMatch[1] : '85';
-            els.metaQa.textContent = `QA: ${qaVal}/100`;
+    // Agent timing
+    const agentLabels = Object.keys(agentTimings);
+    const agentValues = agentLabels.map(k => parseFloat(agentTimings[k].toFixed(2)));
+    if (timingChart) timingChart.destroy();
+    if (agentLabels.length) {
+        timingChart = new Chart(document.getElementById('timingChart'), {
+            type: 'bar',
+            data: {
+                labels: agentLabels,
+                datasets: [{ label:'Seconds', data:agentValues, backgroundColor:'#f97316', borderRadius:4 }]
+            },
+            options: { responsive:true, scales:{ y:{ ticks:{font:{size:9}} }, x:{ ticks:{font:{size:9}} } }, plugins:{ legend:{display:false} } }
+        });
+    }
+}
 
-            const severity = data.overall_severity || 'NORMAL';
-            els.bannerText.textContent = `Overall Severity: ${severity}`;
-            configureBanner(severity);
+// ═══════════════════════════════════════════════════════ CLINICAL CHAT
+document.getElementById('toggle-chat-btn').addEventListener('click', () => {
+    const panel = document.getElementById('chat-panel');
+    const isHidden = panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !isHidden);
+    if (isHidden && document.getElementById('chat-messages').children.length === 0) {
+        appendChat('assistant', "Report loaded. Ask me anything about the findings, differentials, or recommendations.");
+    }
+});
 
-            els.secHistory.textContent = sections.clinical_history || 'Not provided.';
-            els.secTechnique.textContent = sections.technique || 'Not provided.';
-            els.secImpression.textContent = sections.impression || 'Not provided.';
-            els.secRecs.textContent = sections.recommendations || 'None.';
-            els.secDisclaimer.textContent = sections.disclaimer;
-            els.secFindings.innerHTML = parseFindings(sections.findings);
+document.getElementById('chat-send-btn').addEventListener('click', sendChat);
+document.getElementById('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } });
 
-            els.reportContent.classList.remove('hidden');
-        }
+async function sendChat() {
+    const input = document.getElementById('chat-input');
+    const q = input.value.trim();
+    if (!q || !currentReportId) return;
+    input.value = '';
+    appendChat('user', q);
+    const thinking = appendChat('assistant', '⏳ Consulting AI...');
 
-        function configureBanner(severity) {
-            const colors = {
-                NORMAL: ['bg-emerald-50 text-emerald-800 border border-emerald-200', 'text-emerald-600'],
-                INCIDENTAL: ['bg-amber-50 text-amber-800 border border-amber-200', 'text-amber-600'],
-                SIGNIFICANT: ['bg-orange-50 text-orange-800 border border-orange-200', 'text-orange-600'],
-                CRITICAL: ['bg-red-50 text-red-800 border border-red-200', 'text-red-600']
-            };
-            const config = colors[severity] || colors.NORMAL;
-            els.banner.className = `px-4 py-3 rounded-lg flex items-center justify-between transition-colors duration-300 ${config[0]}`;
-            els.bannerIcon.className = `w-8 h-8 rounded-full flex items-center justify-center bg-white/50 ${config[1]}`;
-            els.bannerIcon.innerHTML = severity === 'CRITICAL' 
-                ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>'
-                : '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
-        }
+    try {
+        const res = await fetch(`/chat/${currentReportId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question: q })
+        });
+        const data = await res.json();
+        thinking.textContent = data.answer || 'No response.';
+    } catch (e) {
+        thinking.textContent = 'Failed to get response. Please try again.';
+    }
+}
 
-        function parseFindings(text) {
-            if (!text || text.trim() === '') return '<p class="text-sm text-slate-500 italic p-3">No findings provided.</p>';
+function appendChat(role, text) {
+    const container = document.getElementById('chat-messages');
+    const div = document.createElement('div');
+    div.className = `text-xs leading-relaxed p-2.5 max-w-[90%] animate-fade-in ${role === 'user' ? 'chat-bubble-user ml-auto' : 'chat-bubble-ai'}`;
+    div.textContent = text;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    return div;
+}
 
-            const sevRegex = /Severity:\s*(NORMAL|INCIDENTAL|SIGNIFICANT|CRITICAL)/gi;
-            const sevMatches = [...text.matchAll(sevRegex)];
-            const hierarchy = { NORMAL: 1, INCIDENTAL: 2, SIGNIFICANT: 3, CRITICAL: 4 };
-            let highestSev = 'NORMAL', highestLevel = 1;
-            sevMatches.forEach(m => { if (hierarchy[m[1].toUpperCase()] > highestLevel) { highestLevel = hierarchy[m[1].toUpperCase()]; highestSev = m[1].toUpperCase(); } });
-
-            const confRegex = /(\d+(?:\.\d+)?)%/g;
-            const confMatches = [...text.matchAll(confRegex)];
-            let avgConf = 75;
-            if (confMatches.length > 0) avgConf = Math.round(confMatches.reduce((a, m) => a + parseFloat(m[1]), 0) / confMatches.length);
-
-            let cleanText = text.replace(/\(Severity:\s*(?:NORMAL|INCIDENTAL|SIGNIFICANT|CRITICAL)[^)]*\)/gi, '').trim() || text;
-
-            const styles = {
-                NORMAL: { border: 'finding-normal', badge: 'bg-emerald-100 text-emerald-800' },
-                INCIDENTAL: { border: 'finding-incidental', badge: 'bg-amber-100 text-amber-800' },
-                SIGNIFICANT: { border: 'finding-significant', badge: 'bg-orange-100 text-orange-800' },
-                CRITICAL: { border: 'finding-critical', badge: 'bg-red-100 text-red-800' }
-            };
-            const style = styles[highestSev] || styles.NORMAL;
-            const confColor = avgConf > 75 ? 'bg-emerald-500' : avgConf > 50 ? 'bg-amber-500' : 'bg-red-500';
-
-            return `
-                <div class="relative pl-4 pr-4 py-4 rounded border-l-4 ${style.border} bg-white shadow-sm animate-fade-in">
-                    <div class="absolute top-3 right-3"><span class="text-[10px] font-bold px-2 py-1 rounded ${style.badge} uppercase tracking-wide">${highestSev}</span></div>
-                    <p class="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap pr-20 mb-4">${cleanText}</p>
-                    <div class="flex items-center gap-2 mt-2">
-                        <span class="text-[10px] font-mono text-slate-500 w-16">CONFIDENCE</span>
-                        <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden"><div class="h-full rounded-full ${confColor}" style="width: ${avgConf}%"></div></div>
-                        <span class="text-[10px] font-bold text-slate-700 font-mono">${avgConf}%</span>
-                    </div>
-                </div>
-            `;
-        }
-
-        els.exportBtn.addEventListener('click', () => {
+// ═══════════════════════════════════════════════════════ PDF EXPORT
+document.getElementById('export-pdf-btn').addEventListener('click', () => {
     if (!lastReportData) return;
     try {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         const d = lastReportData;
         const s = d.sections;
-        const W = 210;
-        const LM = 14;
-        const CW = 182;
-        const TM = 32;
-        const FOOTER_Y = 285;
+        const W=210, LM=14, CW=182, TM=32, FY=285;
         let y = TM;
+        const NAVY=[30,58,138], BLUE=[30,64,175], GRAY=[60,60,60], DARK=[20,20,20];
+        const sevRGB = {NORMAL:[16,185,129],INCIDENTAL:[245,158,11],SIGNIFICANT:[249,115,22],CRITICAL:[239,68,68]}[d.overall_severity]||[16,185,129];
 
-        const NAVY = [30, 58, 138];
-        const BLUE = [30, 64, 175];
-        const GRAY_TEXT = [50, 50, 50];
-        const DARK_TEXT = [30, 30, 30];
-        const sevColors = { NORMAL: [16,185,129], INCIDENTAL: [245,158,11], SIGNIFICANT: [249,115,22], CRITICAL: [239,68,68] };
-        const sevRGB = sevColors[d.overall_severity] || sevColors.NORMAL;
+        doc.setFillColor(...NAVY); doc.rect(0,0,W,26,'F');
+        doc.setFillColor(59,130,246); doc.roundedRect(LM,6,10,14,2,2,'F');
+        doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text('M',LM+3.5,14.5);
+        doc.setFontSize(16); doc.text('MediAgent Clinical Report',28,14);
+        doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.text('AMD Instinct MI300X | ROCm | vLLM | Qwen',28,20);
+        const now=new Date(); doc.text(`${d.report_id} | ${now.toLocaleString()}`,196,12,{align:'right'});
+        doc.text(`Overall: ${d.overall_severity||'NORMAL'}`,196,18,{align:'right'});
+        doc.setFillColor(...sevRGB); doc.rect(0,26,W,4,'F');
 
-        doc.setFillColor(...NAVY);
-        doc.rect(0, 0, W, 25, 'F');
-        doc.setFillColor(59, 130, 246);
-        doc.circle(8, 12.5, 4, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.text('M', 8, 13.5);
-        doc.setFontSize(16);
-        doc.text('MediAgent Clinical Workstation', 16, 14);
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        doc.text('Autonomous Radiology Analysis System', 16, 20);
-        const ts = new Date();
-        doc.text(`ID: ${d.report_id}`, 195, 10, { align: 'right' });
-        doc.text(`${ts.toLocaleDateString()} | ${ts.toLocaleTimeString()}`, 195, 16, { align: 'right' });
+        const footer=pg=>{ doc.setDrawColor(200); doc.line(LM,FY-5,196,FY-5); doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(150,150,150); doc.text('MediAgent v2.0 | AMD MI300X | AI-generated — requires licensed radiologist review',LM,FY); doc.text(`${pg}`,196,FY,{align:'right'}); };
+        const brk=(h=10)=>{ if(y+h>FY-8){ footer(doc.internal.getNumberOfPages()); doc.addPage(); y=TM; } };
+        const txt=(t,{sz=10,bold=false,col=GRAY,gap=5}={})=>{ if(!t)t='Not provided.'; doc.setFont('helvetica',bold?'bold':'normal'); doc.setFontSize(sz); doc.setTextColor(...col); const lines=doc.splitTextToSize(t,CW); for(const l of lines){ brk(gap); doc.text(l,LM,y); y+=gap; } y+=1; };
+        const sec=t=>{ brk(12); doc.setDrawColor(...BLUE); doc.setLineWidth(0.4); doc.line(LM,y,196,y); y+=4; doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(...NAVY); doc.text(t,LM,y); y+=6; };
 
-        doc.setFillColor(...sevRGB);
-        doc.rect(0, 25, W, 4, 'F');
+        brk(22); doc.setFillColor(241,245,249); doc.rect(LM,y,CW,18,'F');
+        doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...GRAY);
+        doc.text(`Report ID: ${d.report_id}`,LM+3,y+6); doc.text(`Generated: ${now.toLocaleString()}`,LM+3,y+11);
+        doc.text(`Severity: ${d.overall_severity||'NORMAL'}`,LM+3,y+16);
+        const qa=((s.recommendations||'').match(/Score[:\s]+(\d+)/)||[])[1]||'85';
+        doc.text(`QA Score: ${qa}/100`,LM+100,y+6);
+        y+=24;
 
-        function drawFooter(pg) {
-            doc.setDrawColor(200);
-            doc.line(LM, FOOTER_Y - 5, 196, FOOTER_Y - 5);
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(7);
-            doc.setTextColor(120, 120, 120);
-            doc.text('Powered by AMD MI300X Local Inference | MediAgent v1.0.0 | AI-generated - requires radiologist review', LM, FOOTER_Y);
-            doc.text(`Page ${pg}`, 196, FOOTER_Y, { align: 'right' });
+        if(d.dicom_metadata && Object.keys(d.dicom_metadata).length>0) {
+            sec('DICOM Metadata');
+            const dm=d.dicom_metadata;
+            const pairs=[['Modality',dm.modality],['Body Part',dm.body_part],['Study Date',dm.study_date],['Institution',dm.institution]].filter(p=>p[1]);
+            txt(pairs.map(p=>`${p[0]}: ${p[1]}`).join('  |  '),{sz:9});
         }
-
-        function needBreak(h = 10) {
-            if (y + h > FOOTER_Y - 8) {
-                drawFooter(doc.internal.getNumberOfPages());
-                doc.addPage();
-                y = TM;
-                return true;
-            }
-            return false;
-        }
-
-        function txt(content, opts = {}) {
-            const { size = 10, bold = false, color = GRAY_TEXT, gap = 5 } = opts;
-            if (!content) content = 'Not provided.';
-            doc.setFont('helvetica', bold ? 'bold' : 'normal');
-            doc.setFontSize(size);
-            doc.setTextColor(...color);
-            const lines = doc.splitTextToSize(content, CW);
-            for (let l of lines) { needBreak(gap); doc.text(l, LM, y); y += gap; }
-            y += 2;
-        }
-
-        function section(title) {
-            needBreak(12);
-            doc.setDrawColor(...BLUE);
-            doc.setLineWidth(0.5);
-            doc.line(LM, y, 196, y);
-            y += 4;
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(11);
-            doc.setTextColor(...NAVY);
-            doc.text(title, LM, y);
-            y += 6;
-        }
-
-        needBreak(22);
-        doc.setFillColor(241, 245, 249);
-        doc.rect(LM, y, CW, 20, 'F');
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
-        doc.setTextColor(...GRAY_TEXT);
-        doc.text(`Report ID: ${d.report_id}`, LM + 4, y + 6);
-        doc.text(`Generated: ${ts.toLocaleString()}`, LM + 4, y + 11);
-        doc.text(`Overall Severity: ${d.overall_severity || 'NORMAL'}`, LM + 4, y + 16);
-        const qaFromRecs = (s.recommendations || '').match(/Score[:\s]+(\d+)/);
-        const qaScore = qaFromRecs ? qaFromRecs[1] : '85';
-        doc.text(`QA Score: ${qaScore}/100`, LM + 100, y + 6);
-        y += 26;
-
-        section('Clinical History');
-        txt(s.clinical_history);
-        section('Technique');
-        txt(s.technique);
-        section('Findings');
-        needBreak(30);
-        const fLines = doc.splitTextToSize(s.findings || 'No findings provided.', CW - 8);
-        const fH = Math.max(22, fLines.length * 5 + 10);
-        doc.setFillColor(249, 250, 251);
-        doc.rect(LM, y, CW, fH, 'F');
-        doc.setLineWidth(0.2);
-        txt(s.findings || 'No findings provided.');
-        y += 4;
-        section('Impression');
-        txt(s.impression || 'Not provided.', { size: 12, bold: true, color: DARK_TEXT, gap: 6 });
-        section('Recommendations');
-        txt(s.recommendations || 'None.');
-        section('Disclaimer');
-        needBreak(20);
-        doc.setFillColor(254, 226, 226);
-        doc.rect(LM, y, CW, 18, 'F');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.setTextColor(127, 29, 29);
-        const discText = 'WARNING: ' + (s.disclaimer || '');
-        const dLines = doc.splitTextToSize(discText, CW - 8);
-        for(let i=0; i<dLines.length; i++) { doc.text(dLines[i], LM + 4, y + 6 + i*4.5); }
-        drawFooter(doc.internal.getNumberOfPages());
-        const fn = `MediAgent_${d.report_id}_${ts.toISOString().split('T')[0]}.pdf`;
-        doc.save(fn);
-        showToast('PDF exported successfully.', 'success');
-    } catch (e) { console.error(e); showToast('PDF export failed.', 'error'); }
+        sec('Clinical History'); txt(s.clinical_history);
+        sec('Technique'); txt(s.technique);
+        sec('Findings'); brk(20); doc.setFillColor(249,250,251); const fl=doc.splitTextToSize(s.findings||'None.',CW-4); const fh=Math.max(18,fl.length*5+8); doc.rect(LM,y,CW,fh,'F'); txt(s.findings||'None.');
+        sec('Impression'); txt(s.impression,{sz:11,bold:true,col:DARK,gap:6});
+        sec('Recommendations'); txt(s.recommendations);
+        sec('Disclaimer'); brk(18); doc.setFillColor(254,226,226); doc.rect(LM,y,CW,16,'F'); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(127,29,29); doc.splitTextToSize('DISCLAIMER: '+(s.disclaimer||''),CW-6).forEach((l,i)=>doc.text(l,LM+3,y+5+i*4.5));
+        footer(doc.internal.getNumberOfPages());
+        doc.save(`MediAgent_${d.report_id}_${now.toISOString().split('T')[0]}.pdf`);
+        showToast('PDF exported.', 'success');
+    } catch(e) { console.error(e); showToast('PDF export failed.', 'error'); }
 });
 
-        function showToast(msg, type = 'success') {
-            els.toastMsg.textContent = msg;
-            els.toast.classList.remove('translate-y-20', 'opacity-0');
-            const bg = type === 'error' ? 'bg-red-600' : 'bg-slate-800';
-            els.toast.firstElementChild.className = `${bg} text-white px-4 py-3 rounded shadow-lg text-sm font-medium flex items-center gap-3`;
-            setTimeout(() => els.toast.classList.add('translate-y-20', 'opacity-0'), 3000);
-        }
+// ═══════════════════════════════════════════════════════ AMD GPU POLLING
+function startGpuPolling() {
+    pollGpu();
+    gpuPollInterval = setInterval(pollGpu, 3000);
+}
 
-        init();
-    </script>
+async function pollGpu() {
+    try {
+        const res = await fetch('/metrics/gpu');
+        const data = await res.json();
+        renderGpuPanel(data);
+    } catch(e) {
+        // silently ignore
+    }
+}
+
+function renderGpuPanel(data) {
+    const panel = document.getElementById('gpu-panel-content');
+    const dot = document.getElementById('gpu-status-dot');
+    const headerBadge = document.getElementById('gpu-header-badge');
+    const headerText = document.getElementById('gpu-header-text');
+
+    if (!data.available || !data.cards || !data.cards.length) {
+        dot.className = 'w-1.5 h-1.5 rounded-full bg-slate-600';
+        panel.innerHTML = `<p class="text-[10px] text-slate-500 font-mono text-center py-1">${data.note || 'No GPU detected'}</p>`;
+        return;
+    }
+
+    dot.className = 'w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse';
+    const card = data.cards[0];
+    const gpuPct = Math.round(parseFloat(card.gpu_use_pct) || 0);
+    const vramUsed = Math.round(parseFloat(card.vram_used_mb) || 0);
+    const vramTotal = Math.round(parseFloat(card.vram_total_mb) || 1);
+    const vramPct = vramTotal > 0 ? Math.round((vramUsed / vramTotal) * 100) : 0;
+    const temp = Math.round(parseFloat(card.temp_c) || 0);
+    const power = Math.round(parseFloat(card.power_w) || 0);
+
+    // Header badge
+    headerBadge.classList.remove('hidden');
+    headerBadge.classList.add('flex');
+    headerText.textContent = `GPU ${gpuPct}% | ${temp}°C`;
+
+    const bar = (pct, color) => `
+        <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+            <div class="h-full rounded-full ${color} gpu-bar" style="width:${pct}%"></div>
+        </div>`;
+
+    const gpuColor = gpuPct > 80 ? 'bg-red-500' : gpuPct > 50 ? 'bg-orange-400' : 'bg-green-400';
+    const vramColor = vramPct > 85 ? 'bg-red-500' : vramPct > 60 ? 'bg-orange-400' : 'bg-blue-400';
+
+    panel.innerHTML = `
+        <div class="space-y-2">
+            <div>
+                <div class="flex justify-between items-center mb-0.5">
+                    <span class="text-[9px] font-mono text-slate-400">GPU UTIL</span>
+                    <span class="text-[10px] font-bold font-mono text-orange-300">${gpuPct}%</span>
+                </div>
+                ${bar(gpuPct, gpuColor)}
+            </div>
+            <div>
+                <div class="flex justify-between items-center mb-0.5">
+                    <span class="text-[9px] font-mono text-slate-400">VRAM</span>
+                    <span class="text-[10px] font-bold font-mono text-blue-300">${vramUsed}/${vramTotal} MiB</span>
+                </div>
+                ${bar(vramPct, vramColor)}
+            </div>
+            <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-700">
+                <div class="text-center">
+                    <div class="text-[9px] text-slate-500 font-mono">TEMP</div>
+                    <div class="text-[11px] font-bold font-mono ${temp>80?'text-red-400':temp>65?'text-orange-400':'text-green-400'}">${temp}°C</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-[9px] text-slate-500 font-mono">POWER</div>
+                    <div class="text-[11px] font-bold font-mono text-slate-300">${power}W</div>
+                </div>
+            </div>
+            ${data.note ? `<p class="text-[9px] text-slate-600 font-mono text-center">${data.note}</p>` : ''}
+        </div>`;
+}
+
+// ═══════════════════════════════════════════════════════ UTILITIES
+function setLoading(v) {
+    document.getElementById('submit-btn').disabled = v;
+    document.getElementById('btn-text').textContent = v ? 'Processing...' : 'Run Analysis';
+    document.getElementById('btn-spinner').classList.toggle('hidden', !v);
+}
+
+function log(msg) {
+    document.getElementById('pipeline-log').innerHTML = `<span class="text-slate-700">&gt; ${msg}</span>`;
+}
+
+function startTimer() {
+    startTime = performance.now();
+    const timerEl = document.getElementById('pipeline-timer');
+    timerEl.classList.remove('hidden');
+    timerInterval = setInterval(() => {
+        timerEl.textContent = `⏱ ${((performance.now()-startTime)/1000).toFixed(1)}s elapsed`;
+    }, 100);
+}
+
+function stopTimer() {
+    clearInterval(timerInterval);
+    const elapsed = ((performance.now()-startTime)/1000).toFixed(1);
+    document.getElementById('pipeline-log').innerHTML = `<span class="text-green-600 font-bold">✅ Complete in ${elapsed}s</span>`;
+    document.getElementById('pipeline-timer').classList.add('hidden');
+}
+
+function showToast(msg, type='success') {
+    const toast = document.getElementById('toast');
+    const inner = document.getElementById('toast-inner');
+    document.getElementById('toast-message').textContent = msg;
+    inner.className = `${type==='error'?'bg-red-600':'bg-slate-800'} text-white px-4 py-2.5 rounded-lg shadow-xl text-xs font-medium flex items-center gap-2`;
+    toast.classList.remove('translate-y-16','opacity-0');
+    setTimeout(() => toast.classList.add('translate-y-16','opacity-0'), 3500);
+}
+
+init();
+</script>
 </body>
 </html>

@@ -136,44 +136,24 @@ class ResearchAgent:
     returns ranked diagnostic hypotheses with ICD-10 codes and confidence.
     """
 
-    SYSTEM_PROMPT = """You are a clinical radiology research specialist and medical knowledge integration engine.
-Your task is to analyze imaging findings from a vision agent and cross-reference them with a provided 
-medical knowledge base. Generate a ranked differential diagnosis list with ICD-10 codes, match probabilities, 
-and supporting clinical evidence.
+    SYSTEM_PROMPT = """You are a clinical radiology research specialist. Cross-reference imaging findings against the provided knowledge base and return ONLY valid JSON:
+{"differential_diagnoses":[{"condition_name":"string","match_probability":0-100,"supporting_evidence":"string","differential_rank":1,"icd10_code":"string"}],"matched_conditions":["string"],"relevant_guidelines":["string"],"research_notes":"string"}
 
-IMPORTANT RULES:
-1. ONLY use conditions present in the provided Knowledge Base. Do not invent new diagnoses.
-2. Match anatomical regions and radiological descriptors from the vision findings to the KB's key_findings.
-3. Factor in patient demographics (age, sex, comorbidities) to adjust match probability realistically.
-4. Rank differentials from highest to lowest match probability based on radiological-pathological correlation.
-5. Assign ICD-10 codes exactly as provided in the KB.
-6. CRITICAL: Only include conditions with genuine radiological correlation to the findings. SKIP conditions with no imaging evidence. Do NOT force-fit all conditions.
-7. CRITICAL: Never output 0.0% probability. Minimum probability is 5%. If a condition barely matches, either skip it or use 5% with evidence "Very low likelihood based on current imaging findings."
-8. Output 2-4 differentials maximum. A focused differential is more clinically valuable than listing everything.
-9. Each supporting_evidence must contain at least one full sentence of clinical reasoning explaining WHY this condition matches.
-10. Output ONLY valid JSON matching the exact schema below. No markdown, no commentary.
-
-JSON SCHEMA:
-{
-  "differential_diagnoses": [
-    {
-      "condition_name": "string",
-      "match_probability": number (0.0 to 100.0),
-      "supporting_evidence": "string",
-      "differential_rank": integer (1-based),
-      "icd10_code": "string"
-    }
-  ],
-  "matched_conditions": ["string"],
-  "relevant_guidelines": ["string"],
-  "research_notes": "string"
-}
-"""
+Rules:
+1. ONLY use conditions from the provided KB. Do not invent diagnoses.
+2. Match anatomical regions and radiological descriptors to KB key_findings.
+3. Factor in demographics (age, sex, comorbidities) to adjust probabilities.
+4. Output 2-4 differentials maximum, ranked highest to lowest probability.
+5. Use exact ICD-10 codes from the KB.
+6. Skip conditions with no imaging evidence. Never force-fit.
+7. Minimum probability 5%. Never output 0%.
+8. Each supporting_evidence must explain WHY the condition matches (one full sentence minimum).
+9. No markdown, no commentary — JSON only."""
 
     def __init__(self, llm_client: Optional[LLMClient] = None):
         self.llm = llm_client or LLMClient()
 
-    def process(self, vision_findings: List[VisionFinding], demographics: Dict[str, Any] = None) -> ResearchOutput:
+    def process(self, vision_findings: List[VisionFinding], demographics: Dict[str, Any] = None, detected_modality: str = "UNKNOWN") -> ResearchOutput:
         """
         Execute knowledge-base cross-referencing and differential generation.
         
@@ -185,10 +165,10 @@ JSON SCHEMA:
             ResearchOutput: Ranked differentials, matched conditions, and clinical notes
         """
         logger.info("🔍 Research Agent initiated differential diagnosis matching")
-        
+
         demographics = demographics or {}
         findings_text = self._format_findings_for_prompt(vision_findings)
-        kb_text = self._format_kb_for_prompt()
+        kb_text = self._format_kb_for_prompt(detected_modality)
 
         user_prompt = f"""Patient Demographics:
 - Age: {demographics.get('age', 'Unknown')}
@@ -241,14 +221,19 @@ Analyze the findings, match them against the knowledge base, factor in demograph
             )
         return "\n".join(blocks)
 
-    def _format_kb_for_prompt(self) -> str:
-        """Format the hardcoded KB into a structured reference block."""
+    def _format_kb_for_prompt(self, modality: str = "UNKNOWN") -> str:
+        """Format the KB into a structured reference block, pre-filtered by modality."""
+        # Filter to only conditions compatible with the detected modality
+        if modality in ("X-RAY", "CT", "MRI"):
+            relevant = [e for e in MEDICAL_KB if modality in e["modalities"]]
+        else:
+            relevant = MEDICAL_KB
+
         lines = ["[CONDITION REFERENCE TABLE]"]
-        for entry in MEDICAL_KB:
+        for entry in relevant:
             lines.append(
                 f"- {entry['condition']} (ICD-10: {entry['icd10']}) | "
                 f"Findings: {', '.join(entry['key_findings'])} | "
-                f"Modalities: {', '.join(entry['modalities'])} | "
                 f"Severity: {entry['typical_severity']}"
             )
         return "\n".join(lines)

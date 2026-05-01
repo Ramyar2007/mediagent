@@ -31,7 +31,7 @@ class LLMClient:
         base_url: str = DEFAULT_BASE_URL,
         model: str = DEFAULT_MODEL,
         max_retries: int = 3,
-        timeout: float = 120.0,
+        timeout: float = 90.0,
         temperature: float = 0.0
     ):
         self.model = model
@@ -55,7 +55,9 @@ class LLMClient:
         prompt: str,
         system_prompt: str = "",
         temperature: Optional[float] = None,
-        force_json: bool = False
+        force_json: bool = False,
+        max_tokens: Optional[int] = None,
+        extra_body: Optional[Dict] = None,
     ) -> Dict[str, Any]:
         """
         Send a text-only completion request to the LLM.
@@ -67,8 +69,58 @@ class LLMClient:
             messages=messages,
             temperature=temperature,
             response_format=response_format,
-            call_type="TEXT"
+            call_type="TEXT",
+            max_tokens=max_tokens,
+            extra_body=extra_body,
         )
+
+    def generate_text_streaming(
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        temperature: Optional[float] = None,
+        on_token: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """
+        Text completion with optional token-level streaming callback.
+        When on_token is provided, calls on_token(chunk: str) for every token chunk
+        as it arrives from the model. Returns the full response dict at the end.
+        Falls back to standard generate_text if streaming fails.
+        """
+        if on_token is None:
+            return self.generate_text(prompt, system_prompt, temperature)
+
+        messages = self._build_messages(system_prompt, prompt)
+        temp = temperature if temperature is not None else self.default_temperature
+
+        try:
+            stream = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=temp,
+                stream=True,
+            )
+            full_content = ""
+            for chunk in stream:
+                delta = (chunk.choices[0].delta.content or "") if chunk.choices else ""
+                if delta:
+                    full_content += delta
+                    try:
+                        on_token(delta)
+                    except Exception:
+                        pass  # callback errors must not break generation
+
+            logger.debug("Streaming TEXT generation completed | chars=%d", len(full_content))
+            return {
+                "success": True,
+                "content": full_content,
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                "model": self.model,
+                "error": None,
+            }
+        except Exception as e:
+            logger.warning("Streaming failed (%s), falling back to standard call", e)
+            return self.generate_text(prompt, system_prompt, temperature)
 
     def generate_vision(
         self,
@@ -127,7 +179,8 @@ class LLMClient:
         messages: List[Dict],
         temperature: Optional[float],
         response_format: Optional[Dict],
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        extra_body: Optional[Dict] = None,
     ) -> Dict[str, Any]:
         """Execute a single API call with the OpenAI client."""
         kwargs = {
@@ -139,6 +192,8 @@ class LLMClient:
             kwargs["max_tokens"] = max_tokens
         if response_format:
             kwargs["response_format"] = response_format
+        if extra_body:
+            kwargs["extra_body"] = extra_body
 
         response = self.client.chat.completions.create(**kwargs)
         content = response.choices[0].message.content or ""
@@ -163,13 +218,14 @@ class LLMClient:
         temperature: Optional[float],
         response_format: Optional[Dict],
         call_type: str,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        extra_body: Optional[Dict] = None,
     ) -> Dict[str, Any]:
         """Retry wrapper with exponential backoff for robust local inference."""
         last_error = None
         for attempt in range(1, self.max_retries + 1):
             try:
-                result = self._attempt_call(messages, temperature, response_format, max_tokens)
+                result = self._attempt_call(messages, temperature, response_format, max_tokens, extra_body)
                 if result["success"]:
                     logger.debug(f"{call_type} generation successful on attempt {attempt}")
                     return result
@@ -177,7 +233,8 @@ class LLMClient:
                 last_error = str(e)
                 logger.warning(f"{call_type} generation failed on attempt {attempt}/{self.max_retries}: {e}")
                 if attempt < self.max_retries:
-                    backoff = min(2 ** attempt, 16)
+                    # Short fixed backoff for local inference — no need for exponential waits
+                    backoff = 1.0
                     logger.info(f"Retrying in {backoff}s...")
                     time.sleep(backoff)
 

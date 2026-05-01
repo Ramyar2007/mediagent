@@ -1,13 +1,20 @@
 # mediagent/core/pipeline.py
 """
 Pipeline Orchestrator for MediAgent.
-Manages sequential execution of all medical imaging analysis agents,
-tracks real-time state, handles graceful error recovery, and coordinates
-data flow between specialized AI components.
+Manages execution of all medical imaging analysis agents with parallel
+scheduling where possible, tracks real-time state, handles graceful error
+recovery, and coordinates data flow between specialized AI components.
+
+Parallelism strategy:
+  - INTAKE + VISION run concurrently (vision only needs the raw image)
+  - RESEARCH runs after VISION completes (needs findings)
+  - REPORT runs after all three complete
+  - CRITIC runs after REPORT
 """
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, wait as futures_wait
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional
 
@@ -28,9 +35,8 @@ logger = logging.getLogger(__name__)
 class PipelineOrchestrator:
     """
     Central execution engine that routes patient data through the 5-agent
-    medical analysis pipeline. Maintains real-time state, supports streaming
-    status callbacks for UI synchronization, and implements graceful degradation
-    on partial agent failures.
+    medical analysis pipeline. Runs INTAKE and VISION in parallel to cut
+    wall-clock latency, then sequences RESEARCH → REPORT → CRITIC.
     """
 
     AGENT_ORDER = ["INTAKE", "VISION", "RESEARCH", "REPORT", "CRITIC"]
@@ -44,17 +50,6 @@ class PipelineOrchestrator:
         critic_agent: Any,
         on_status_update: Optional[Callable[[PipelineState], None]] = None,
     ):
-        """
-        Initialize orchestrator with instantiated agents and optional status callback.
-        
-        Args:
-            intake_agent: Instance of IntakeAgent
-            vision_agent: Instance of VisionAgent
-            research_agent: Instance of ResearchAgent
-            report_agent: Instance of ReportAgent
-            critic_agent: Instance of CriticAgent
-            on_status_update: Optional callback invoked after each agent completes
-        """
         self.agents = {
             "INTAKE": intake_agent,
             "VISION": vision_agent,
@@ -66,75 +61,76 @@ class PipelineOrchestrator:
 
     def run(self, patient_input: PatientInput) -> PipelineState:
         """
-        Execute the full diagnostic pipeline sequentially.
-        
-        Args:
-            patient_input: Validated patient submission with image & context
-            
+        Execute the full diagnostic pipeline with parallel INTAKE+VISION stage.
+
         Returns:
             PipelineState: Complete execution state containing all outputs,
                           agent statuses, and final report.
         """
         logger.info("🚀 Pipeline execution started | Input ID: %s", id(patient_input))
         state = PipelineState()
-        
+
         try:
             # ─────────────────────────────────────────────────────────────
-            # STEP 1: INTAKE AGENT
+            # STAGE 1: INTAKE + VISION in parallel
+            # Vision uses raw symptoms as clinical context so it doesn't
+            # have to wait for intake normalization to complete.
             # ─────────────────────────────────────────────────────────────
-            self._execute_step(state, "INTAKE", patient_input=patient_input)
+            raw_context = patient_input.symptoms or ""
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                intake_fut = pool.submit(
+                    self._execute_step, state, "INTAKE",
+                    patient_input=patient_input
+                )
+                vision_fut = pool.submit(
+                    self._execute_step, state, "VISION",
+                    image_base64=patient_input.image_base64,
+                    clinical_context=raw_context
+                )
+                futures_wait([intake_fut, vision_fut])
+
             if state.agent_statuses["INTAKE"] == AgentStatus.ERROR:
                 logger.warning("⚠️ Intake failed. Halting pipeline for safety.")
                 return state
-
-            # ─────────────────────────────────────────────────────────────
-            # STEP 2: VISION AGENT
-            # ─────────────────────────────────────────────────────────────
-            self._execute_step(
-                state, "VISION",
-                image_base64=patient_input.image_base64,
-                clinical_context=state.intake_output.standardized_symptoms
-            )
             if state.agent_statuses["VISION"] == AgentStatus.ERROR:
                 logger.warning("⚠️ Vision analysis failed. Continuing with degraded pipeline.")
 
             # ─────────────────────────────────────────────────────────────
-            # STEP 3: RESEARCH AGENT
+            # STAGE 2: RESEARCH (needs vision findings + intake demographics)
             # ─────────────────────────────────────────────────────────────
             self._execute_step(
                 state, "RESEARCH",
                 vision_findings=state.vision_output.findings if state.vision_output else [],
-                demographics=state.intake_output.extracted_demographics
+                demographics=state.intake_output.extracted_demographics,
+                detected_modality=state.vision_output.modality_detected.value if state.vision_output else "UNKNOWN"
             )
             if state.agent_statuses["RESEARCH"] == AgentStatus.ERROR:
                 logger.warning("⚠️ Research failed. Generating report without differential augmentation.")
 
             # ─────────────────────────────────────────────────────────────
-            # STEP 4: REPORT AGENT
+            # STAGE 3: REPORT (synthesizes all three upstream outputs)
             # ─────────────────────────────────────────────────────────────
             self._execute_step(
                 state, "REPORT",
                 intake=state.intake_output,
                 vision=state.vision_output,
-                research=state.research_output
+                research=state.research_output,
             )
             if state.agent_statuses["REPORT"] == AgentStatus.ERROR:
                 logger.error("❌ Report generation failed. Pipeline cannot complete safely.")
                 return state
 
             # ─────────────────────────────────────────────────────────────
-            # STEP 5: CRITIC AGENT
+            # STAGE 4: CRITIC (QA review of final draft)
             # ─────────────────────────────────────────────────────────────
             self._execute_step(
                 state, "CRITIC",
                 draft_report=state.report_draft,
                 pipeline_state=state
             )
-            
-            # Assemble final report
+
             state.final_report = self._assemble_final_report(state)
             state.current_step = "COMPLETE"
-            
             logger.info("✅ Pipeline execution completed successfully.")
 
         except Exception as e:
@@ -152,6 +148,7 @@ class PipelineOrchestrator:
     ) -> None:
         """
         Generic step executor with state management, timing, and error isolation.
+        Thread-safe: each agent writes to its own dedicated state field.
         """
         logger.info(f"▶️ Executing agent: {agent_name}")
         state.current_step = agent_name
@@ -163,8 +160,7 @@ class PipelineOrchestrator:
             agent = self.agents[agent_name]
             output = agent.process(**kwargs)
             elapsed = time.perf_counter() - start_time
-            
-            # Store output in state
+
             if output is not None:
                 if agent_name == "INTAKE":
                     state.intake_output = output
@@ -174,7 +170,7 @@ class PipelineOrchestrator:
                     state.research_output = output
                 elif agent_name == "REPORT":
                     state.report_draft = output
-                    
+
             state.mark_done(agent_name)
             logger.info(f"✅ {agent_name} completed in {elapsed:.3f}s")
 

@@ -26,43 +26,26 @@ class ReportAgent:
         "before any clinical decisions are made."
     )
 
-    SYSTEM_PROMPT = """You are a senior board-certified radiologist and clinical documentation specialist.
-Your task is to synthesize the provided imaging findings, patient context, and differential diagnoses 
-into a formal, structured radiology report.
+    SYSTEM_PROMPT = """You are a senior board-certified radiologist. Synthesize the provided findings into a formal radiology report. Return ONLY valid JSON:
+{"clinical_history":"string","technique":"string","findings":"string","impression":"string","recommendations":"string","disclaimer":"string"}
 
-OUTPUT FORMAT (STRICT JSON):
-{
-  "clinical_history": "string",
-  "technique": "string",
-  "findings": "string",
-  "impression": "string",
-  "recommendations": "string",
-  "disclaimer": "string"
-}
-
-SECTION GUIDELINES:
-1. clinical_history: Summarize patient age, sex, chief complaint, and relevant context from intake data. Use formal clinical language.
-2. technique: Describe imaging modality, planes/sequences (if applicable), contrast status, and image quality/artifacts.
-3. findings: Provide a detailed, anatomical region-by-region description. Reference specific observations, note severity levels (NORMAL/INCIDENTAL/SIGNIFICANT/CRITICAL), distinguish normal variants from pathology, and describe size, shape, density, and location precisely.
-4. impression: Concisely summarize the most clinically significant findings. Explicitly list the top 3 differential diagnoses with their match probabilities. State overall clinical significance. End the impression with a confidence statement like: 'Confidence Level: High — imaging findings are classic and unambiguous.' or 'Confidence Level: Medium — findings are suggestive but require clinical correlation.' based on the quality of evidence.
-5. recommendations: Provide clinically appropriate next steps (e.g., further imaging, specialist referral, urgent evaluation, routine follow-up). Base recommendations on severity and diagnostic confidence.
-6. disclaimer: ALWAYS use this exact text: "This analysis is AI-generated and must be reviewed by a licensed radiologist before any clinical decisions are made."
-
-RULES:
-- Output ONLY valid JSON. No markdown, no preamble, no extra text.
-- Maintain objective, professional radiological tone.
-- If data is missing for a section, state "Not provided" or "Unable to assess" rather than fabricating.
-- Use standard radiological terminology throughout.
-"""
+Section rules:
+1. clinical_history: Age, sex, chief complaint, relevant context — formal clinical language.
+2. technique: Modality, planes/sequences, contrast status, image quality.
+3. findings: Anatomical region-by-region description; severity levels (NORMAL/INCIDENTAL/SIGNIFICANT/CRITICAL); size, shape, density, location.
+4. impression: Top 3 differentials with probabilities; clinical significance; end with "Confidence Level: High/Medium/Low — [reason]".
+5. recommendations: Next steps based on severity and confidence (further imaging, referral, urgent eval, follow-up).
+6. disclaimer: MUST be exactly: "This analysis is AI-generated and must be reviewed by a licensed radiologist before any clinical decisions are made."
+No markdown, no preamble, no extra text. Use standard radiological terminology. State "Not provided" for missing data."""
 
     def __init__(self, llm_client: Optional[LLMClient] = None):
         self.llm = llm_client or LLMClient()
 
     def process(
-        self, 
-        intake: Optional[IntakeOutput] = None, 
-        vision: Optional[VisionOutput] = None, 
-        research: Optional[ResearchOutput] = None
+        self,
+        intake: Optional[IntakeOutput] = None,
+        vision: Optional[VisionOutput] = None,
+        research: Optional[ResearchOutput] = None,
     ) -> ReportSection:
         """
         Synthesize agent outputs into a formal clinical radiology report.
@@ -78,12 +61,12 @@ RULES:
         logger.info("📝 Report Agent initiated report synthesis")
         
         user_prompt = self._build_user_prompt(intake, vision, research)
-        
+
         result = self.llm.generate_text(
             prompt=user_prompt,
             system_prompt=self.SYSTEM_PROMPT,
             temperature=0.1,
-            force_json=True
+            force_json=True,
         )
 
         if not result.get("success"):
