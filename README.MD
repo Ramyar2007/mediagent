@@ -33,7 +33,7 @@ Upload an image. Watch five AI agents execute live. Get a formal radiology repor
 
 **No cloud APIs. No OpenAI. No Nvidia.**
 Pure AMD MI300X inference. Local. Private. Fast.
-
+https://youtu.be/MAd9t_Q7fq0
 ---
 
 ## The Pipeline
